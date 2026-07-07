@@ -297,7 +297,7 @@ function syncConnect(){
     let m;try{m=JSON.parse(ev.data);}catch(e){return;}
     if(m.t==='state')onStateDoc(m.doc);
     else if(m.t==='op')applyOp(m.k,m.v,false);
-    else if(m.t==='courseResult')handleCourseResult(m);
+    else if(m.t==='courseResult'||m.t==='backupResult')handleCourseResult(m);
   };
   sock.onclose=()=>{sockOpen=false;sock=null;render();scheduleReconnect();};
   sock.onerror=()=>{try{sock&&sock.close();}catch(e){}};
@@ -386,6 +386,71 @@ function onlineList(){
     .sort((a,b)=>(b.near?1:0)-(a.near?1:0));
 }
 let addingPlayer=false,editingPlayer=null,scanOpen=false,scanShown=[];
+// ---- library backup to the Pi (email-verified restore) ----
+let backupUI={mode:null,stage:0,msg:''};
+async function relayBackup(payload){
+  const ws=await waitForRelay(6000);
+  return new Promise((res,rej)=>{
+    if(!ws)return rej(new Error('relay offline'));
+    const rid='b'+Math.random().toString(36).slice(2,8);
+    pendingCourse[rid]={res,timer:setTimeout(()=>{delete pendingCourse[rid];rej(new Error('timeout'));},20000)};
+    try{ws.send(JSON.stringify({t:'backup',rid,...payload}));}
+    catch(e){clearTimeout(pendingCourse[rid].timer);delete pendingCourse[rid];rej(e);}
+  });
+}
+function openBackup(){backupUI={mode:'backup',stage:0,msg:''};render();}
+function openRestore(){backupUI={mode:'restore',stage:0,msg:''};render();}
+function closeBackup(){backupUI={mode:null,stage:0,msg:''};render();}
+function bkEmail(){
+  const el=document.getElementById('bkEmail');
+  const em=(el&&el.value||'').trim().toLowerCase();
+  if(!/^\S+@\S+\.\S+$/.test(em)){backupUI.msg='Enter a valid email address.';render();return null;}
+  localStorage.setItem('wolfBackupEmail',em);
+  return em;
+}
+async function doBackup(){
+  const em=bkEmail();if(!em)return;
+  backupUI.msg='Backing up…';render();
+  try{
+    const r=await relayBackup({op:'save',email:em,data:{me:S.me,playerLib:S.playerLib}});
+    backupUI.msg=r.ok?`✓ ${S.playerLib.length} player${S.playerLib.length===1?'':'s'} backed up to the Pi${r.emailed?' — confirmation emailed':''}.`:(r.error||'Backup failed.');
+  }catch(e){backupUI.msg='Could not reach the Pi — check your connection.';}
+  render();
+}
+async function requestRestoreCode(){
+  const em=bkEmail();if(!em)return;
+  backupUI.msg='Sending code…';render();
+  try{
+    const r=await relayBackup({op:'code',email:em});
+    if(r.ok){backupUI.stage=1;backupUI.msg='Code emailed — enter it below (valid 15 min).';}
+    else backupUI.msg=r.error||'Could not send the code.';
+  }catch(e){backupUI.msg='Could not reach the Pi — check your connection.';}
+  render();
+}
+async function doRestore(){
+  const em=(localStorage.getItem('wolfBackupEmail')||'').trim();
+  const cd=(document.getElementById('bkCode')&&document.getElementById('bkCode').value||'').trim();
+  if(!/^\d{6}$/.test(cd)){backupUI.msg='Enter the 6-digit code from the email.';render();return;}
+  backupUI.msg='Restoring…';render();
+  try{
+    const r=await relayBackup({op:'get',email:em,code:cd});
+    if(r.ok&&r.data){
+      let added=0,updated=0;
+      set(()=>{
+        (r.data.playerLib||[]).forEach(e=>{
+          if(!e||!e.name)return;
+          const ex=S.playerLib.find(x=>x.name.trim().toLowerCase()===String(e.name).trim().toLowerCase());
+          if(ex){ex.index=e.index;if(e.teeName)ex.teeName=e.teeName;updated++;}
+          else{S.playerLib.push({id:e.id||('pl'+Date.now()+Math.floor(Math.random()*1e4)),name:e.name,index:e.index,teeName:e.teeName});added++;}
+        });
+        if(!S.me.name&&r.data.me&&r.data.me.name)S.me=r.data.me;
+      });
+      backupUI.stage=0;
+      backupUI.msg=`✓ Restored — ${added} added, ${updated} updated.`;
+    }else backupUI.msg=r.error||'Restore failed.';
+  }catch(e){backupUI.msg='Could not reach the Pi — check your connection.';}
+  render();
+}
 function toggleScan(){
   scanOpen=!scanOpen;
   if(scanOpen){sendHello();grabCoords();}
@@ -436,7 +501,7 @@ function lobbyConnect(){
     else if(m.t==='invite'){invites=invites.filter(i=>i.code!==m.info.code).concat([m.info]);render();}
     else if(m.t==='uninvite'){invites=invites.filter(i=>i.code!==m.code);render();}
     else if(m.t==='nearby'){nearby=(m.list||[]).filter(p=>p.id!==devId());if(S.screen==='home'||S.screen==='setup')render();}
-    else if(m.t==='courseResult')handleCourseResult(m);
+    else if(m.t==='courseResult'||m.t==='backupResult')handleCourseResult(m);
   };
   lobbySock.onclose=()=>{lobbySock=null;nearby=[];if(!(S.share&&S.share.on))setTimeout(lobbyConnect,10000);};
   lobbySock.onerror=()=>{try{lobbySock&&lobbySock.close();}catch(e){}};
@@ -670,6 +735,25 @@ function vHome(){
         <button class="ghost danger" onclick="delPlayer('${e.id}')">✕</button>
       </span></div>`).join('')
     :'<div class="tiny">Golfers you set up in a round are saved here automatically.</div>';})()}
+    ${backupUI.mode?`
+      <div class="tiny mt mb" style="border-top:1px solid var(--line);padding-top:10px">${backupUI.mode==='backup'?'Back up this library to the Pi — restore it on any phone later.':'Restore a backed-up library from the Pi.'}</div>
+      <input id="bkEmail" type="text" inputmode="email" autocapitalize="off" placeholder="you@email.com" value="${esc(localStorage.getItem('wolfBackupEmail')||'')}">
+      ${backupUI.mode==='backup'
+        ?`<div class="mt" style="display:flex;gap:6px">
+            <button class="ghost sel" style="flex:1" onclick="doBackup()">Back up now</button>
+            <button class="ghost" onclick="closeBackup()">Close</button></div>`
+        :backupUI.stage===0
+          ?`<div class="mt" style="display:flex;gap:6px">
+              <button class="ghost sel" style="flex:1" onclick="requestRestoreCode()">Email me a code</button>
+              <button class="ghost" onclick="closeBackup()">Close</button></div>`
+          :`<input id="bkCode" class="mt" type="text" inputmode="numeric" placeholder="6-digit code" maxlength="6" style="letter-spacing:5px;font-family:Rajdhani,sans-serif;font-size:20px;margin-top:8px">
+            <div class="mt" style="display:flex;gap:6px">
+              <button class="ghost sel" style="flex:1" onclick="doRestore()">Restore library</button>
+              <button class="ghost" onclick="closeBackup()">Close</button></div>`}
+      ${backupUI.msg?`<div class="tiny mt">${esc(backupUI.msg)}</div>`:''}`
+    :`<div class="mt" style="display:flex;gap:6px;border-top:1px solid var(--line);padding-top:12px">
+        <button class="ghost" onclick="openBackup()">☁ Back up</button>
+        <button class="ghost" onclick="openRestore()">Restore</button></div>`}
   </div>
   <div class="card"><h2>New round</h2>
     <div class="tiny mb">Players, handicaps, tees and point values are set on the next screen. Starting a round with nearby players invites their phones automatically.</div>
