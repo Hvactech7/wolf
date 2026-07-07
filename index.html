@@ -165,6 +165,7 @@ function load(){
       if(!s.config._v){s.config._v=2;s.config.carryTies=false;}
       if(!s.config.track)s.config.track={bunker:false,chips:false,pen:false};
       if(!s.share)s.share={on:false,code:null};
+      if(!s.me)s.me={name:'',index:10};
       if(!s.courses){
         s.courses=builtinCourses();
         if(s.course.name==='Sample Course'){
@@ -188,7 +189,7 @@ function load(){
       return s;
     }}
   }catch(e){}
-  return {screen:'home',course:defaultCourse(),courses:builtinCourses(),playerLib:[],config:defaultConfig(),players:defaultPlayers(),round:blankRound(),share:{on:false,code:null}};
+  return {screen:'home',course:defaultCourse(),courses:builtinCourses(),playerLib:[],config:defaultConfig(),players:defaultPlayers(),round:blankRound(),share:{on:false,code:null},me:{name:'',index:10}};
 }
 function syncLib(){
   if(!S.courses)return;
@@ -310,20 +311,66 @@ function leaveShare(){
   save();render();
   lobbyConnect();
 }
-// ---- lobby: hear about shared rounds without typing a code ----
-let lobbySock=null,invites=[];
+// ---- lobby: invitations + nearby-player presence ----
+let lobbySock=null,invites=[],nearby=[],myCoords=null,nbShown=[];
+function devId(){let d=localStorage.getItem('wolfDevId');if(!d){d='d'+Math.random().toString(36).slice(2,10);localStorage.setItem('wolfDevId',d);}return d;}
+function kmBetween(a,b,c,d){const R=6371,dl=(c-a)*Math.PI/180,dn=(d-b)*Math.PI/180;const x=Math.sin(dl/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
+function sendHello(){
+  if(!lobbySock||lobbySock.readyState!==1||!S.me||!S.me.name)return;
+  try{lobbySock.send(JSON.stringify({t:'hello',info:{id:devId(),name:S.me.name,index:S.me.index,
+    tee:S.me.teeName||'',lat:myCoords?myCoords[0]:null,lon:myCoords?myCoords[1]:null}}));}catch(e){}
+}
+function grabCoords(){
+  if(!navigator.geolocation)return;
+  navigator.geolocation.getCurrentPosition(
+    p=>{myCoords=[p.coords.latitude,p.coords.longitude];sendHello();},
+    ()=>{},{timeout:8000,maximumAge:300000});
+}
+function saveMe(){
+  const n=document.getElementById('meName'),x=document.getElementById('meIdx');
+  const name=(n&&n.value||'').trim();
+  if(!name)return;
+  set(()=>{
+    S.me={name,index:+((x&&x.value)||10)||10};
+    upsertLib({name,index:S.me.index,tee:S.players[0]?S.players[0].tee:undefined,libId:null});
+  });
+  sendHello();grabCoords();
+}
+function editMe(){set(()=>{S.me.name='';});}
+function nearbyList(){
+  return nearby.filter(p=>{
+    if(myCoords&&p.lat!=null)return kmBetween(myCoords[0],myCoords[1],p.lat,p.lon)<5;
+    return true;
+  });
+}
 function lobbyConnect(){
   if((S.share&&S.share.on)||lobbySock)return;
   try{lobbySock=new WebSocket(RELAY);}catch(e){lobbySock=null;setTimeout(lobbyConnect,10000);return;}
-  lobbySock.onopen=()=>{try{lobbySock.send('{"t":"lobby"}');}catch(e){}};
+  lobbySock.onopen=()=>{try{lobbySock.send('{"t":"lobby"}');}catch(e){}sendHello();grabCoords();};
   lobbySock.onmessage=ev=>{
     let m;try{m=JSON.parse(ev.data);}catch(e){return;}
     if(m.t==='invites'){invites=m.list||[];render();}
     else if(m.t==='invite'){invites=invites.filter(i=>i.code!==m.info.code).concat([m.info]);render();}
     else if(m.t==='uninvite'){invites=invites.filter(i=>i.code!==m.code);render();}
+    else if(m.t==='nearby'){nearby=(m.list||[]).filter(p=>p.id!==devId());if(S.screen==='home'||S.screen==='setup')render();}
   };
-  lobbySock.onclose=()=>{lobbySock=null;if(!(S.share&&S.share.on))setTimeout(lobbyConnect,10000);};
+  lobbySock.onclose=()=>{lobbySock=null;nearby=[];if(!(S.share&&S.share.on))setTimeout(lobbyConnect,10000);};
   lobbySock.onerror=()=>{try{lobbySock&&lobbySock.close();}catch(e){}};
+}
+function pickPlayerOpt(i,v){
+  if(!v)return;
+  if(v.startsWith('lib:')){loadPlayer(i,v.slice(4));return;}
+  if(v.startsWith('nb:')){
+    const n=nbShown[+v.slice(3)];
+    if(!n)return;
+    set(()=>{
+      const p=S.players[i];
+      p.name=n.name;p.index=+n.index||10;p.chOverride=null;p.nearby=true;delete p.libId;
+      const t=S.course.teeSets.find(ts=>ts.name.toLowerCase()===String(n.tee||'').toLowerCase());
+      if(t)p.tee=t.id;
+      upsertLib(p);
+    });
+  }
 }
 function lobbyClose(){
   invites=[];
@@ -442,6 +489,14 @@ function tabs(sel){
 function vHome(){
   const inRound=S.round.started;
   return topbar('Wolf','Golf side games','')+`<main>
+  ${!S.me.name?`<div class="card"><h2>Your profile</h2>
+    <div class="tiny mb">So nearby phones can add you to a round by name.</div>
+    <div class="grid2">
+      <div><div class="tiny">Your name</div><input type="text" id="meName" onfocus="tapClear(this)"></div>
+      <div><div class="tiny">Handicap index</div><input type="text" inputmode="decimal" id="meIdx" placeholder="10.0" onfocus="tapClear(this)"></div>
+    </div>
+    <button class="big mt" onclick="saveMe()">Save profile</button>
+  </div>`:''}
   ${!S.share.on?invites.map(inv=>`<div class="card" style="border-color:var(--amber);background:#fffcf7">
     <h2 style="color:var(--amber)">Round invitation</h2>
     <div class="mb"><b>${esc(inv.course||'Shared round')}</b>
@@ -483,14 +538,20 @@ function vHome(){
       </div>
       <button class="ghost danger mt" style="width:100%" onclick="leaveShare()">Leave shared round</button>`
     :`
-      <button class="big" onclick="shareRound()">Share this round — get a code</button>
-      <div class="row mt" style="border:none">
-        <input type="text" id="joincode" placeholder="ABCDE" maxlength="8" autocapitalize="characters" style="width:46%;text-transform:uppercase;font-family:Rajdhani,sans-serif;font-size:20px;letter-spacing:3px">
-        <button class="ghost sel" style="flex:1" onclick="joinRound()">Join a shared round</button>
-      </div>
-      <div class="tiny mt">Joining replaces this phone's current round with the shared one.</div>`}
+      <div class="tiny">Add nearby players in round setup and their phones get an invitation automatically when you start. Invitations to you pop up at the top of this screen.</div>
+      ${S.round.started?`<button class="ghost mt" style="width:100%" onclick="shareRound()">Share this phone's current round</button>`:''}
+      <details class="mt"><summary class="tiny" style="cursor:pointer;color:var(--ink3)">Join with a code (backup if invitations don't appear)</summary>
+        <div class="row" style="border:none">
+          <input type="text" id="joincode" placeholder="ABCDE" maxlength="8" autocapitalize="characters" style="width:46%;text-transform:uppercase;font-family:Rajdhani,sans-serif;font-size:20px;letter-spacing:3px">
+          <button class="ghost sel" style="flex:1" onclick="joinRound()">Join</button>
+        </div>
+        <div class="tiny">Joining replaces this phone's current round with the shared one.</div>
+      </details>`}
   </div>
   <div class="card"><h2>Players</h2>
+    ${S.me.name?`<div class="row"><div><b>${esc(S.me.name)} <span class="pill gray">you</span></b><div class="tiny">Index ${S.me.index}</div></div>
+      <button class="ghost" onclick="editMe()">Edit</button></div>`:''}
+    ${nearbyList().length?`<div class="tiny mt mb">📍 Nearby on the app: ${nearbyList().map(n=>esc(n.name)).join(', ')}</div>`:''}
     ${S.playerLib.length?S.playerLib.map(e=>`<div class="row">
       <div><b>${esc(e.name)}</b><div class="tiny">Index ${e.index}${e.teeName?` · prefers ${esc(e.teeName)} tees`:''}</div></div>
       <button class="ghost danger" onclick="delPlayer('${e.id}')">✕</button></div>`).join('')
@@ -636,6 +697,7 @@ function delTee(i){if(S.course.teeSets.length<=1)return;set(()=>{S.course.teeSet
 
 // ----- round setup -----
 function vSetup(){
+  nbShown=nearbyList();
   const ch=courseHandicaps(), st=playingStrokes();
   const rows=S.players.map((p,i)=>{
     const teeOpts=S.course.teeSets.map(t=>`<option value="${t.id}" ${p.tee===t.id?'selected':''}>${esc(t.name)}</option>`).join('');
@@ -649,9 +711,10 @@ function vSetup(){
         <div><div class="tiny">or course hcp (override)</div><input type="text" inputmode="numeric" placeholder="auto: ${ch[i]}" value="${p.chOverride==null?'':p.chOverride}" onfocus="tapClear(this)" onblur="commitPl(this,${i},'chOverride')"></div>
       </div>
       <div class="tiny mt">Course hcp <b>${ch[i]}</b> → plays with <b>${st[i]}</b> stroke${st[i]===1?'':'s'} (off the low man)</div>
-      ${S.playerLib.length?`<select class="mt" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:9px;font-size:13px;color:var(--ink2);background:#fff" onchange="loadPlayer(${i},this.value)">
-        <option value="">Load saved player…</option>
-        ${S.playerLib.map(e=>`<option value="${e.id}">${esc(e.name)} · ${e.index}${e.teeName?` · ${esc(e.teeName)}`:''}</option>`).join('')}
+      ${(nbShown.length||S.playerLib.length)?`<select class="mt" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:9px;font-size:13px;color:var(--ink2);background:#fff" onchange="pickPlayerOpt(${i},this.value)">
+        <option value="">Add player…</option>
+        ${nbShown.length?`<optgroup label="Nearby — on the app right now">${nbShown.map((n,j)=>`<option value="nb:${j}">📍 ${esc(n.name)}${n.index!=null?` · ${n.index}`:''}</option>`).join('')}</optgroup>`:''}
+        ${S.playerLib.length?`<optgroup label="Saved players">${S.playerLib.map(e=>`<option value="lib:${e.id}">${esc(e.name)} · ${e.index}${e.teeName?` · ${esc(e.teeName)}`:''}</option>`).join('')}</optgroup>`:''}
       </select>`:''}
     </div>`;
   }).join('');
@@ -728,7 +791,11 @@ function setPl(i,k,v){set(()=>{
 function movePl(i){set(()=>{const a=S.players;[a[i-1],a[i]]=[a[i],a[i-1]];});}
 function chPt(k,d){set(()=>{S.config.pts[k]=Math.max(0,S.config.pts[k]+d);});}
 function chAllow(d){set(()=>{S.config.allowance=Math.min(100,Math.max(50,S.config.allowance+d));});}
-function startRound(){set(()=>{S.round=blankRound();S.round.started=true;S.screen='hole';});}
+function startRound(){
+  const withNearby=S.players.some(p=>p.nearby);
+  set(()=>{S.round=blankRound();S.round.started=true;S.screen='hole';});
+  if(withNearby&&!S.share.on)shareRound();
+}
 
 // ----- hole screen -----
 function vHole(){
