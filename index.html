@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#14532d">
+<meta name="theme-color" content="#1e3a5f">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Wolf</title>
@@ -21,11 +21,12 @@
 </style>
 <style>
   :root{
-    --green:#14532d; --green-mid:#1c7a43; --green-lt:#e8f3ec;
-    --amber:#b45309; --amber-lt:#fdf1e0;
-    --ink:#171b17; --ink2:#5b635b; --ink3:#8a938a;
-    --line:#d9ded9; --bg:#f4f6f4; --card:#ffffff;
-    --red:#b3261e; --red-lt:#fdecea;
+    --green:#1e3a5f; --green-mid:#2d5a8f; --green-lt:#e8eef6;
+    --green-dk:#142a45;
+    --amber:#8a6414; --amber-bd:#b08d3e; --amber-lt:#f7ecd2; --amber-dk:#6f5619;
+    --ink:#232838; --ink2:#5c6172; --ink3:#8f94a3;
+    --line:#ded4b9; --bg:#f3eee0; --card:#fffdf6;
+    --red:#7f1d1d; --red-lt:#f3e2e2;
   }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
   html,body{height:100%}
@@ -39,57 +40,65 @@
   header.top .sub{font-size:12px;opacity:.85}
   header.top button{background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:600;font-family:inherit}
   main{flex:1;padding:14px 14px 90px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+  .card{background:var(--card);border:2px solid var(--green);border-radius:10px;padding:14px;margin-bottom:16px;box-shadow:4px 4px 0 var(--green)}
+  details.card summary{outline:none}
   .card h2{font-size:13px;font-weight:600;color:var(--ink2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px}
   .row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0}
   .row+.row{border-top:1px solid var(--line)}
   .muted{color:var(--ink2);font-size:13px}
   .tiny{color:var(--ink3);font-size:12px}
-  button.big{display:block;width:100%;background:var(--green);color:#fff;border:none;border-radius:12px;
-    padding:15px;font-size:16px;font-weight:600;font-family:inherit;margin-top:6px}
-  button.big:disabled{background:#b9c4bc}
-  button.big.warn{background:var(--amber)}
-  button.ghost{background:none;border:1px solid var(--line);border-radius:10px;padding:9px 13px;font-size:13px;font-weight:600;color:var(--ink);font-family:inherit}
-  button.ghost.sel{border-color:var(--green-mid);background:var(--green-lt);color:var(--green)}
-  button.ghost.danger{color:var(--red);border-color:#e9c6c3}
+  button.big{display:block;width:100%;background:var(--green);color:#f3ead1;border:2px solid var(--green-dk);border-radius:10px;
+    padding:14px;font-size:16px;font-weight:600;font-family:inherit;margin-top:8px;box-shadow:3px 3px 0 var(--green-dk)}
+  button.big:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--green-dk)}
+  button.big:disabled{background:#a9b2c2;border-color:#8d97a9;box-shadow:none;color:#f0f2f5}
+  button.big.warn{background:var(--amber-bd);border-color:var(--amber-dk);box-shadow:3px 3px 0 var(--amber-dk);color:#fffdf6}
+  button.big.warn:active{box-shadow:1px 1px 0 var(--amber-dk)}
+  button.ghost{background:var(--card);border:2px solid var(--green);border-radius:8px;padding:8px 13px;font-size:13px;font-weight:600;color:var(--green);font-family:inherit;box-shadow:2px 2px 0 var(--green)}
+  button.ghost:active{transform:translate(1px,1px);box-shadow:1px 1px 0 var(--green)}
+  button.ghost.sel{background:var(--green-lt)}
+  button.ghost.danger{color:var(--red);border-color:var(--red);box-shadow:2px 2px 0 var(--red)}
+  button.ghost.danger:active{box-shadow:1px 1px 0 var(--red)}
   .seg{display:flex;gap:6px}
   .seg button{flex:1}
-  input[type=text],input[type=number]{border:1px solid var(--line);border-radius:9px;padding:9px 10px;font-size:15px;font-family:inherit;width:100%;background:#fff;color:var(--ink)}
+  input[type=text],input[type=number]{border:2px solid var(--line);border-radius:8px;padding:8px 10px;font-size:15px;font-family:inherit;width:100%;background:var(--card);color:var(--ink)}
   input:focus{outline:2px solid var(--green-mid);border-color:transparent}
+  select{background:var(--card)}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .stepper{display:flex;align-items:center;gap:8px}
-  .stepper button{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:#fff;font-size:20px;color:var(--ink2);font-family:inherit;flex:none}
+  .stepper button{width:38px;height:38px;border-radius:8px;border:2px solid var(--green);background:var(--card);font-size:20px;color:var(--green);font-family:inherit;flex:none;box-shadow:2px 2px 0 var(--green)}
+  .stepper button:active{transform:translate(1px,1px);box-shadow:1px 1px 0 var(--green)}
   .stepper .val{min-width:34px;text-align:center;font-size:22px}
   .stepper.mini button{width:28px;height:28px;border-radius:8px;font-size:15px}
   .stepper.mini .val{min-width:20px;font-size:17px}
   .stepper.mini{gap:5px}
-  .banner{border-radius:10px;padding:9px 12px;font-size:13.5px;font-weight:600;margin-bottom:10px}
-  .banner.wolf{background:var(--amber-lt);color:var(--amber)}
-  .banner.ok{background:var(--green-lt);color:var(--green)}
-  .banner.carry{background:var(--red-lt);color:var(--red)}
+  .banner{border-radius:8px;padding:9px 12px;font-size:13.5px;font-weight:600;margin-bottom:12px;border:2px solid}
+  .banner.wolf{background:var(--amber-lt);color:var(--amber);border-color:var(--amber-bd);box-shadow:2px 2px 0 var(--amber-bd)}
+  .banner.ok{background:var(--green-lt);color:var(--green);border-color:var(--green);box-shadow:2px 2px 0 var(--green)}
+  .banner.carry{background:var(--red-lt);color:var(--red);border-color:var(--red);box-shadow:2px 2px 0 var(--red)}
   .dots{color:var(--green-mid);letter-spacing:2px;font-size:11px}
   .pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11.5px;font-weight:600}
   .pill.wolf{background:var(--amber-lt);color:var(--amber)}
-  .pill.gray{background:#eef1ee;color:var(--ink2)}
+  .pill.gray{background:#ece6d4;color:var(--ink2)}
   table.st{width:100%;border-collapse:collapse;font-size:14px}
   table.st th{text-align:left;font-size:11px;color:var(--ink3);text-transform:uppercase;letter-spacing:.5px;padding:4px 6px;border-bottom:1px solid var(--line)}
   table.st td{padding:7px 6px;border-bottom:1px solid var(--line)}
   table.st tr:last-child td{border-bottom:none}
   table.st td.r,table.st th.r{text-align:right}
   nav.tabs{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;
-    background:#fff;border-top:1px solid var(--line);display:flex;z-index:6;padding-bottom:env(safe-area-inset-bottom)}
+    background:var(--card);border-top:2px solid var(--green);display:flex;z-index:6;padding-bottom:env(safe-area-inset-bottom)}
   nav.tabs button{flex:1;background:none;border:none;padding:11px 0 9px;font-size:12px;font-weight:600;color:var(--ink3);font-family:inherit}
   nav.tabs button.sel{color:var(--green)}
   nav.tabs .ic{display:block;font-size:19px;margin-bottom:1px}
   .holegrid{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}
-  .holegrid button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 0;font-family:Rajdhani,sans-serif;font-weight:700;font-size:16px;color:var(--ink2)}
-  .holegrid button.done{background:var(--green-lt);color:var(--green);border-color:#bcd9c6}
-  .holegrid button.cur{outline:2px solid var(--green-mid)}
-  .pickcard{border:1px solid var(--line);border-radius:12px;padding:11px 12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:8px}
-  .wolfcard{display:flex;align-items:center;gap:12px;background:#fffcf7;border:1px solid var(--amber);border-radius:12px;padding:11px 12px;margin-bottom:10px}
-  .wolfcard .tiny{color:var(--amber);opacity:.75}
+  .holegrid button{border:1.5px solid var(--line);background:var(--card);border-radius:8px;padding:6px 0;font-family:Rajdhani,sans-serif;font-weight:700;font-size:16px;color:var(--ink2)}
+  .holegrid button.done{background:var(--green-lt);color:var(--green);border-color:var(--green)}
+  .holegrid button.cur{outline:2px solid var(--green);outline-offset:1px}
+  .pickcard{border:2px solid var(--green);border-radius:10px;padding:11px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--card);box-shadow:2px 2px 0 var(--green)}
+  .pickcard:active{transform:translate(1px,1px);box-shadow:1px 1px 0 var(--green)}
+  .wolfcard{display:flex;align-items:center;gap:12px;background:#f9f0d9;border:2px solid var(--amber-bd);border-radius:10px;padding:11px 12px;margin-bottom:14px;box-shadow:3px 3px 0 var(--amber-bd)}
+  .wolfcard .tiny{color:var(--amber);opacity:.85}
   .wolf-ic{font-size:24px;display:inline-block}
-  .pickcard.active{border-color:var(--amber);background:#fffcf7}
+  .pickcard.active{border-color:var(--amber-bd);background:#f9f0d9;box-shadow:2px 2px 0 var(--amber-bd)}
   .pickcard.decided{opacity:.6}
   .scorebar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 0}
   .scorebar+.scorebar{border-top:1px solid var(--line)}
@@ -105,10 +114,10 @@
   .sc td.nm,.sc th.nm{font-family:Inter,-apple-system,sans-serif;font-size:12px;text-align:left;position:sticky;left:0;background:var(--card);min-width:56px;max-width:96px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:8px;font-stretch:normal;letter-spacing:0}
   .sc .parrow td{color:var(--ink3);font-weight:500}
   .sc td.tt{font-weight:700}
-  .sc td.bir{background:#e8f3ec;color:#14532d}
-  .sc td.eag{background:#cfe8d8;color:#14532d}
-  .sc td.bog{background:#fdf1e0;color:#b45309}
-  .sc td.dbl{background:#fdecea;color:#b3261e}
+  .sc td.bir{background:#e3efe3;color:#1c5c34}
+  .sc td.eag{background:#cde5d2;color:#1c5c34}
+  .sc td.bog{background:var(--amber-lt);color:var(--amber)}
+  .sc td.dbl{background:var(--red-lt);color:var(--red)}
   .sc td.e{color:var(--ink3);font-weight:400}
 </style>
 </head>
@@ -863,12 +872,12 @@ function vSetup(){
         <span>${i>0?`<button class="ghost" onclick="movePl(${i})">↑</button>`:''}</span></div>
       <div class="grid2 mt">
         <div><div class="tiny">Name</div><input type="text" value="${esc(p.name)}" onfocus="tapClear(this)" onblur="commitPl(this,${i},'name')"></div>
-        <div><div class="tiny">Tees</div><select style="width:100%;padding:9px;border:1px solid var(--line);border-radius:9px;font-size:15px" onchange="setPl(${i},'tee',this.value)">${teeOpts}</select></div>
+        <div><div class="tiny">Tees</div><select style="width:100%;padding:9px;border:2px solid var(--line);border-radius:8px;font-size:15px;background:var(--card)" onchange="setPl(${i},'tee',this.value)">${teeOpts}</select></div>
         <div><div class="tiny">Handicap index</div><input type="text" inputmode="decimal" value="${p.index}" onfocus="tapClear(this)" onblur="commitPl(this,${i},'index')"></div>
         <div><div class="tiny">or course hcp (override)</div><input type="text" inputmode="numeric" placeholder="auto: ${ch[i]}" value="${p.chOverride==null?'':p.chOverride}" onfocus="tapClear(this)" onblur="commitPl(this,${i},'chOverride')"></div>
       </div>
       <div class="tiny mt">Course hcp <b>${ch[i]}</b> → plays with <b>${st[i]}</b> stroke${st[i]===1?'':'s'} (off the low man)</div>
-      ${(nbShown.length||S.playerLib.length)?`<select class="mt" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:9px;font-size:13px;color:var(--ink2);background:#fff" onchange="pickPlayerOpt(${i},this.value)">
+      ${(nbShown.length||S.playerLib.length)?`<select class="mt" style="width:100%;padding:8px;border:2px solid var(--line);border-radius:8px;font-size:13px;color:var(--ink2);background:var(--card)" onchange="pickPlayerOpt(${i},this.value)">
         <option value="">Add player…</option>
         ${nbShown.some(n=>n.near)?`<optgroup label="Nearby — on the course">${nbShown.map((n,j)=>n.near?`<option value="nb:${j}">📍 ${esc(n.name)}${n.index!=null?` · ${n.index}`:''}</option>`:'').join('')}</optgroup>`:''}
         ${nbShown.some(n=>!n.near)?`<optgroup label="Online — elsewhere">${nbShown.map((n,j)=>!n.near?`<option value="nb:${j}">🌐 ${esc(n.name)}${n.index!=null?` · ${n.index}`:''}</option>`:'').join('')}</optgroup>`:''}
