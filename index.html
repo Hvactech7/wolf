@@ -637,7 +637,7 @@ function tabs(sel){
 // ----- home -----
 function vHome(){
   const inRound=S.round.started;
-  return topbar('Battle Tees','Golf side games','')+`<main>
+  return `<header style="background:#1e3a5f"><img src="banner.jpg" alt="Battle Tees" style="width:100%;display:block" onerror="this.parentElement.innerHTML='<h1 style=&quot;color:#e8d9b0;padding:14px 16px;font-size:17px&quot;>Battle Tees</h1>'"></header><main>
   <div class="center" style="margin:0 0 14px"><img src="crest.jpg" alt="Battle Tees crest" style="width:190px;max-width:58%;border-radius:16px" onerror="this.style.display='none'"></div>
   ${!S.me.name?`<div class="card"><h2>Your profile</h2>
     <div class="tiny mb">So nearby phones can add you to a round by name.</div>
