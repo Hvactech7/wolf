@@ -260,7 +260,7 @@ function setTheme(t){set(()=>{S.theme=t;});applyTheme();}
 
 // ---------- live sync (relay on the Pi via Tailscale Funnel) ----------
 const RELAY=localStorage.getItem('wolfRelay')||'wss://raspi5.tail734d97.ts.net/battletees';
-const GMAPS_KEY='';  // Google Maps JS API key (referrer-restricted); empty = Esri fallback
+const GMAPS_KEY='AIzaSyDdf3ZpPkQSrw1Ga89Id-1oorFI5tQbZTA';  // Maps JS API key, referrer-restricted to hvactech7.github.io + localhost:8756; Esri fallback if rejected
 const SYNC_KEYS=['meta',...Array.from({length:HOLES},(_,i)=>'h'+i)];
 let sock=null,sockOpen=false,retryMs=1000,applyingRemote=false;
 const sentCache={},localContent={};
