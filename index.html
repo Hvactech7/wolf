@@ -101,6 +101,8 @@
   .wolfcard{display:flex;align-items:center;gap:12px;background:var(--amber-lt);border:2px solid var(--amber-bd);border-radius:10px;padding:11px 12px;margin-bottom:14px;box-shadow:3px 3px 0 var(--amber-bd)}
   .wolfcard .tiny{color:var(--amber);opacity:.85}
   .wolf-ic{font-size:24px;display:inline-block}
+  .wolfcard{overflow:hidden}
+  .wolf-art{height:82px;margin:-11px -12px -11px 4px;flex:none;filter:drop-shadow(0 0 6px rgba(199,106,29,.45))}
   .pickcard.active{border-color:var(--amber-bd);background:var(--amber-lt);box-shadow:2px 2px 0 var(--amber-bd)}
   .pickcard.decided{opacity:.6}
   .scorebar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 0}
@@ -140,6 +142,9 @@
   html.light .sc td.eag{background:#cde5d2;color:#1c5c34}
   html.light button.ghost.sel{color:var(--elec)}
   html.light nav.tabs button.sel{color:var(--elec)}
+  #holemap{position:fixed;top:62px;bottom:112px;left:50%;transform:translateX(-50%);width:100%;max-width:480px;z-index:1;background:#0a0f18}
+  .mapbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:var(--card);border-top:2px solid var(--green);padding:6px 12px calc(8px + env(safe-area-inset-bottom));z-index:5}
+  .leaflet-container{font-family:inherit}
 </style>
 </head>
 <body>
@@ -254,7 +259,8 @@ function applyTheme(){
 function setTheme(t){set(()=>{S.theme=t;});applyTheme();}
 
 // ---------- live sync (relay on the Pi via Tailscale Funnel) ----------
-const RELAY=localStorage.getItem('wolfRelay')||'wss://raspi5.tail734d97.ts.net/wolf';
+const RELAY=localStorage.getItem('wolfRelay')||'wss://raspi5.tail734d97.ts.net/battletees';
+const GMAPS_KEY='';  // Google Maps JS API key (referrer-restricted); empty = Esri fallback
 const SYNC_KEYS=['meta',...Array.from({length:HOLES},(_,i)=>'h'+i)];
 let sock=null,sockOpen=false,retryMs=1000,applyingRemote=false;
 const sentCache={},localContent={};
@@ -633,6 +639,234 @@ function computeAll(){
 }
 function wolfForHole(h){return computeAll().perHole[h].wolf;}
 
+
+// ---------- hole map: satellite view + GPS distances (Phase 1) ----------
+let mapHole=0,LMAP=null,mapWatch=null,mapMarks={},leafletP=null;
+function loadLeaflet(){
+  if(window.L)return Promise.resolve();
+  if(leafletP)return leafletP;
+  leafletP=new Promise((res,rej)=>{
+    const c=document.createElement('link');c.rel='stylesheet';
+    c.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(c);
+    const sc=document.createElement('script');
+    sc.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    sc.onload=res;sc.onerror=()=>{leafletP=null;rej(new Error('map library failed to load'));};
+    document.head.appendChild(sc);
+  });
+  return leafletP;
+}
+function mDist(a,b){return kmBetween(a[0],a[1],b[0],b[1])*1000;}
+function yd(m){return Math.round(m*1.09361);}
+function centroidOf(poly){
+  let la=0,lo=0;poly.forEach(p=>{la+=p[0];lo+=p[1];});
+  return [la/poly.length,lo/poly.length];
+}
+function fmbFrom(pos,poly,center){
+  if(!poly||poly.length<3)return {f:null,m:mDist(pos,center),b:null};
+  const c=centroidOf(poly);
+  const mLat=111320,mLon=111320*Math.cos(pos[0]*Math.PI/180);
+  const vx=(c[1]-pos[1])*mLon,vy=(c[0]-pos[0])*mLat;
+  const L0=Math.hypot(vx,vy)||1;const ux=vx/L0,uy=vy/L0;
+  let mn=1e9,mx=-1e9;
+  poly.forEach(v=>{
+    const x=(v[1]-pos[1])*mLon,y=(v[0]-pos[0])*mLat;
+    const t=x*ux+y*uy;
+    if(t<mn)mn=t;if(t>mx)mx=t;
+  });
+  return {f:Math.max(0,mn),m:L0,b:mx};
+}
+function openMap(){mapHole=S.round.cur||0;S.screen='map';render();}
+function closeMap(){S.screen='hole';render();}
+function mapPrev(){mapHole=(mapHole+17)%18;render();}
+function mapNext(){mapHole=(mapHole+1)%18;render();}
+function teardownMap(){
+  if(mapWatch!=null&&navigator.geolocation){navigator.geolocation.clearWatch(mapWatch);mapWatch=null;}
+  if(LMAP){try{LMAP.remove();}catch(e){}LMAP=null;}
+  mapMarks={};
+}
+function vMap(){
+  const hole=S.course.holes[mapHole]||{par:4,si:0};
+  return topbar(`Hole ${mapHole+1} · Par ${hole.par}`,`${esc(S.course.name)} · SI ${hole.si}`,'')+`
+  <div id="holemap"></div>
+  <div class="mapbar">
+    <div class="row" style="border:none;padding:2px 0">
+      <button class="ghost" onclick="mapPrev()">◀</button>
+      <div class="center" style="flex:1">
+        <div class="num" id="fmb" style="font-size:22px">—</div>
+        <div class="tiny" id="fmbsub">loading…</div>
+      </div>
+      <button class="ghost" onclick="mapNext()">▶</button>
+    </div>
+    <div class="tiny center mt" id="tapinfo" style="margin-top:4px">Tap the map for distances to that spot · <span onclick="closeMap()" style="text-decoration:underline;cursor:pointer">back to scoring</span></div>
+  </div>`;
+}
+async function ensureCourseGeo(){
+  const pos=await new Promise(res=>{
+    if(!navigator.geolocation)return res(null);
+    navigator.geolocation.getCurrentPosition(
+      p=>res([p.coords.latitude,p.coords.longitude]),()=>res(null),
+      {timeout:8000,maximumAge:120000});
+  });
+  const c=pos||myCoords;
+  if(!c)throw new Error('Turn on location to download the course map.');
+  const q=`[out:json][timeout:25];(way["golf"="hole"](around:2500,${c[0]},${c[1]});way["golf"="green"](around:2500,${c[0]},${c[1]}););out geom;`;
+  const js=await overpassQuery(q);
+  const els=js.elements||[];
+  const holes={},greens=[];
+  els.forEach(e=>{
+    const g=(e.geometry||[]).map(p=>[+p.lat.toFixed(6),+p.lon.toFixed(6)]);
+    if(e.tags&&e.tags.golf==='hole'){
+      const n=parseInt(e.tags.ref);
+      if(n>=1&&n<=18&&g.length>1)holes[n]={path:g,green:null};
+    }else if(e.tags&&e.tags.golf==='green'&&g.length>2)greens.push(g);
+  });
+  const found=Object.keys(holes).length;
+  Object.values(holes).forEach(hh=>{
+    const end=hh.path[hh.path.length-1];
+    let best=null,bd=120;
+    greens.forEach(g=>{const d=mDist(end,centroidOf(g));if(d<bd){bd=d;best=g;}});
+    hh.green=best;
+  });
+  set(()=>{S.course.geo={ts:Date.now(),holes,empty:found===0};});
+  if(!found)throw new Error("This course isn't hole-mapped yet — the rangefinder still works.");
+}
+
+let googleP=null,GM_BROKEN=false,GMDIV=null,GMAP=null,gmOverlays=[],gmMe=null,gmTap=null;
+window.gm_authFailure=function(){GM_BROKEN=true;const s2=document.getElementById('fmbsub');if(s2)s2.textContent='Google key rejected — using open imagery.';if(S.screen==='map')requestAnimationFrame(initHoleMap);};
+function loadGoogleMaps(){
+  if(window.google&&window.google.maps)return Promise.resolve();
+  if(googleP)return googleP;
+  googleP=new Promise((res,rej)=>{
+    window.__gmReady=()=>res();
+    const sc=document.createElement('script');
+    sc.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(GMAPS_KEY)+'&v=weekly&loading=async&callback=__gmReady';
+    sc.onerror=()=>{googleP=null;rej(new Error('load failed'));};
+    document.head.appendChild(sc);
+    setTimeout(()=>rej(new Error('timeout')),12000);
+  });
+  return googleP;
+}
+function mapTapAt(t){
+  if(mapMarks.setTap)mapMarks.setTap(t);
+  const from=mapMarks.mePos||mapMarks.ref;
+  const info=document.getElementById('tapinfo');
+  if(info){
+    let out=[];
+    if(from)out.push(`You → spot: <b class="num" style="font-size:15px">${yd(mDist(from,t))}y</b>`);
+    if(mapMarks.greenC)out.push(`Spot → green: <b class="num" style="font-size:15px">${yd(mDist(t,mapMarks.greenC))}y</b>`);
+    info.innerHTML=out.join(' · ')||'—';
+  }
+}
+function startMapGps(){
+  if(!navigator.geolocation)return;
+  mapWatch=navigator.geolocation.watchPosition(p=>{
+    const pos=[p.coords.latitude,p.coords.longitude];
+    myCoords=pos;mapMarks.mePos=pos;
+    if(mapMarks.setMe)mapMarks.setMe(pos);
+    updateFMB(pos,'yards from you');
+  },()=>{},{enableHighAccuracy:true,maximumAge:3000});
+}
+function initGoogleHoleMap(el,geo,geoErr){
+  const gm=google.maps;
+  if(!GMDIV){GMDIV=document.createElement('div');GMDIV.style.cssText='width:100%;height:100%';}
+  el.appendChild(GMDIV);
+  if(!GMAP){
+    GMAP=new gm.Map(GMDIV,{mapTypeId:'satellite',disableDefaultUI:true,gestureHandling:'greedy',tilt:0,keyboardShortcuts:false,clickableIcons:false});
+    GMAP.addListener('click',e=>mapTapAt([e.latLng.lat(),e.latLng.lng()]));
+  }
+  gmOverlays.forEach(o=>o.setMap(null));gmOverlays=[];gmMe=null;gmTap=null;
+  gm.event.trigger(GMAP,'resize');
+  const P=a=>({lat:a[0],lng:a[1]});
+  const dot=(pos,color,r)=>{const m=new gm.Marker({position:P(pos),map:GMAP,clickable:false,icon:{path:gm.SymbolPath.CIRCLE,scale:r||6,fillColor:color,fillOpacity:1,strokeColor:'#fff',strokeWeight:2}});gmOverlays.push(m);return m;};
+  let greenC=null,greenPoly=null;
+  if(geo&&geo.path&&geo.path.length>1){
+    gmOverlays.push(new gm.Polyline({path:geo.path.map(P),strokeOpacity:0,clickable:false,
+      icons:[{icon:{path:'M 0,-1 0,1',strokeOpacity:.95,strokeColor:'#ffffff',scale:2.2},offset:'0',repeat:'14px'}],map:GMAP}));
+    const pathEnd=geo.path[geo.path.length-1];
+    if(geo.green&&geo.green.length>2){
+      greenPoly=geo.green;greenC=centroidOf(geo.green);
+      gmOverlays.push(new gm.Polygon({paths:geo.green.map(P),strokeColor:'#7fd49a',strokeWeight:2,fillColor:'#7fd49a',fillOpacity:.18,clickable:false,map:GMAP}));
+    }else greenC=pathEnd;
+    dot(geo.path[0],'#2b86ec');dot(greenC,'#ffd75e');
+    const b=new gm.LatLngBounds();
+    geo.path.concat(greenPoly||[]).forEach(pt=>b.extend(P(pt)));
+    GMAP.fitBounds(b,{top:36,bottom:36,left:36,right:36});
+    mapMarks={greenC,greenPoly,ref:geo.path[0],mePos:null};
+    updateFMB(geo.path[0],'yards from the tee');
+  }else{
+    GMAP.setCenter(P(myCoords||[38.6972,-121.6173]));GMAP.setZoom(16);
+    mapMarks={greenC:null,greenPoly:null,ref:myCoords||null,mePos:null};
+    const s2=document.getElementById('fmbsub');
+    if(s2)s2.textContent=geoErr||'Hole lines not mapped here — rangefinder still works.';
+  }
+  mapMarks.setMe=pos=>{if(!gmMe)gmMe=dot(pos,'#2b86ec',8);else gmMe.setPosition(P(pos));};
+  mapMarks.setTap=t=>{if(!gmTap)gmTap=dot(t,'#ffb454');else gmTap.setPosition(P(t));};
+  startMapGps();
+}
+
+async function initHoleMap(){
+  const el=document.getElementById('holemap');
+  if(!el)return;
+  teardownMap();
+  const sub=()=>document.getElementById('fmbsub');
+  let geoErr='';
+  if(!S.course.geo){
+    const s2=sub();if(s2)s2.textContent='Downloading course map…';
+    try{await ensureCourseGeo();return;}
+    catch(e){geoErr=e.message;}
+    if(S.screen!=='map')return;
+  }
+  const geo=S.course.geo&&S.course.geo.holes?S.course.geo.holes[mapHole+1]:null;
+  // Google renderer when a key is configured; open imagery otherwise or on failure
+  if(GMAPS_KEY&&!GM_BROKEN){
+    try{
+      await loadGoogleMaps();
+      if(S.screen!=='map')return;
+      if(!GM_BROKEN){initGoogleHoleMap(el,geo,geoErr);return;}
+    }catch(e){}
+  }
+  try{await loadLeaflet();}
+  catch(e){const s2=sub();if(s2)s2.textContent='Map needs an internet connection — try again with signal.';return;}
+  if(S.screen!=='map')return;
+  LMAP=L.map(el,{zoomControl:false});
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    {maxZoom:20,maxNativeZoom:19,attribution:'Esri, Maxar, Earthstar Geographics'}).addTo(LMAP);
+  let greenC=null,greenPoly=null;
+  if(geo&&geo.path&&geo.path.length>1){
+    L.polyline(geo.path,{color:'#ffffff',weight:2.5,opacity:.95,dashArray:'7 7'}).addTo(LMAP);
+    const pathEnd=geo.path[geo.path.length-1];
+    if(geo.green&&geo.green.length>2){
+      greenPoly=geo.green;greenC=centroidOf(geo.green);
+      L.polygon(geo.green,{color:'#7fd49a',weight:2,fillOpacity:.18}).addTo(LMAP);
+    }else greenC=pathEnd;
+    L.circleMarker(geo.path[0],{radius:6,color:'#fff',weight:2,fillColor:'#2b86ec',fillOpacity:1}).addTo(LMAP);
+    L.circleMarker(greenC,{radius:6,color:'#fff',weight:2,fillColor:'#ffd75e',fillOpacity:1}).addTo(LMAP);
+    LMAP.fitBounds(L.latLngBounds(geo.path.concat(greenPoly||[])),{padding:[36,36]});
+    mapMarks={greenC,greenPoly,ref:geo.path[0],mePos:null};
+    updateFMB(geo.path[0],'yards from the tee');
+  }else{
+    const c=myCoords||[38.6972,-121.6173];
+    LMAP.setView(c,16);
+    mapMarks={greenC:null,greenPoly:null,ref:c,mePos:null};
+    const s2=sub();if(s2)s2.textContent=geoErr||'Hole lines not mapped here — rangefinder still works.';
+  }
+  let lMe=null,lTap=null;
+  mapMarks.setMe=pos=>{if(!LMAP)return;if(!lMe)lMe=L.circleMarker(pos,{radius:8,color:'#fff',weight:2.5,fillColor:'#2b86ec',fillOpacity:1}).addTo(LMAP);else lMe.setLatLng(pos);};
+  mapMarks.setTap=t=>{if(!LMAP)return;if(!lTap)lTap=L.circleMarker(t,{radius:6,color:'#fff',weight:2,fillColor:'#ffb454',fillOpacity:1}).addTo(LMAP);else lTap.setLatLng(t);};
+  startMapGps();
+  LMAP.on('click',e=>mapTapAt([e.latlng.lat,e.latlng.lng]));
+}
+function updateFMB(pos,label){
+  const el=document.getElementById('fmb'),s2=document.getElementById('fmbsub');
+  if(!el||!pos)return;
+  if(!mapMarks.greenC){el.textContent='—';return;}
+  const r=fmbFrom(pos,mapMarks.greenPoly,mapMarks.greenC);
+  el.innerHTML=r.f!=null
+    ?`<span style="color:var(--ink2);font-size:14px">F</span> ${yd(r.f)}  <span style="color:var(--ink2);font-size:14px">M</span> ${yd(r.m)}  <span style="color:var(--ink2);font-size:14px">B</span> ${yd(r.b)}`
+    :`${yd(r.m)}y to green`;
+  if(s2)s2.textContent=label;
+}
+
 // ---------- rendering ----------
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -646,7 +880,10 @@ function render(){
   else if(scr==='hole') html=vHole();
   else if(scr==='standings') html=vStandings();
   else if(scr==='settle') html=vSettle();
+  else if(scr==='map') html=vMap();
   el.innerHTML=html;
+  if(scr==='map')requestAnimationFrame(initHoleMap);
+  else teardownMap();
 }
 function topbar(title,sub,backTo){
   return `<header class="top"><div><h1>${esc(title)}</h1>${sub?`<div class="sub">${esc(sub)}</div>`:''}</div>
@@ -1027,7 +1264,9 @@ function vCourse(){
     <button class="ghost danger" onclick="delTee(${i})">✕</button></div>`).join('');
   return topbar('Course setup','','home')+`<main>
   ${c._note?`<div class="banner ${c._noteOk?'ok':'wolf'}">${c._noteOk?'✓ ':''}${esc(c._note)} <button class="ghost" style="margin-left:6px" onclick="set(()=>{delete S.course._note;delete S.course._noteOk;})">Got it</button></div>`:''}
-  <div class="card"><h2>Name</h2><input type="text" value="${esc(c.name)}" onchange="set(()=>S.course.name=this.value)" oninput="S.course.name=this.value;save()"></div>
+  <div class="card"><h2>Name</h2><input type="text" value="${esc(c.name)}" onchange="set(()=>S.course.name=this.value)" oninput="S.course.name=this.value;save()">
+    ${c.geo?`<button class="ghost mt" onclick="set(()=>delete S.course.geo)">Clear downloaded hole-map data</button>
+    <div class="tiny mt">Use this if the satellite map shows the wrong course — it re-downloads at the course next time.</div>`:''}</div>
   <div class="card"><h2>Tee sets — name · rating · slope</h2>${tees}
     <button class="ghost mt" onclick="addTee()">Add tee set</button>
     <div class="tiny mt">Enter the women's rating/slope as its own tee set (e.g. "Red (W)") — a player assigned to it is handicapped correctly automatically.</div></div>
@@ -1152,7 +1391,8 @@ function vHole(){
   const names=S.players.map(p=>p.name);
   const dots=i=>dotsOn(i,h);
   const holeNav=`<div class="card"><div class="holegrid">${S.round.holes.map((r,i)=>
-    `<button class="${r.confirmed?'done':''} ${i===h?'cur':''}" onclick="jumpHole(${i})">${i+1}</button>`).join('')}</div></div>`;
+    `<button class="${r.confirmed?'done':''} ${i===h?'cur':''}" onclick="jumpHole(${i})">${i+1}</button>`).join('')}</div>
+    <button class="ghost mt" style="width:100%" onclick="openMap()">🛰 Hole map &amp; distances</button></div>`;
   const carryNote=rec.confirmed?'':activeLenses().map(L=>{
     const c=h>0?all.perHole[h-1].carryAfter[L]:0;
     return c>0?`<div class="banner carry">Carryover live (${L}): this hole pays ×${c+1} if decided</div>`:'';
@@ -1224,9 +1464,10 @@ function vHole(){
   }
   return topbar(`Hole ${h+1}`,`Par ${hole.par} · SI ${hole.si} · ${esc(S.course.name)}${S.share.on?` · ${esc(S.share.code)} ${sockOpen?'●':'○'}`:''}`,'')+`<main>
     ${holeNav}
-    <div class="wolfcard"><span class="wolf-ic" aria-hidden="true">🐺</span>
-      <div><b>${esc(names[rec.wolfAt??wolf])} is the Wolf</b>
-      <div class="tiny">hits first · ${dots(rec.wolfAt??wolf)>0?`<span class="dots">${'●'.repeat(dots(rec.wolfAt??wolf))}</span> gets ${dots(rec.wolfAt??wolf)===2?'2 strokes':'a stroke'} here`:'no stroke here'}${h>=16&&S.config.last2LastPlace?' · last place picks up the wolf here':''}</div></div></div>
+    <div class="wolfcard">
+      <div style="flex:1;min-width:0"><b>${esc(names[rec.wolfAt??wolf])} is the Wolf</b>
+      <div class="tiny">hits first · ${dots(rec.wolfAt??wolf)>0?`<span class="dots">${'●'.repeat(dots(rec.wolfAt??wolf))}</span> gets ${dots(rec.wolfAt??wolf)===2?'2 strokes':'a stroke'} here`:'no stroke here'}${h>=16&&S.config.last2LastPlace?' · last place picks up the wolf here':''}</div></div>
+      <img class="wolf-art" src="wolf.png" alt="" onerror="this.style.display='none'"></div>
     ${carryNote}
     ${body}
   </main>`+tabs('hole');
