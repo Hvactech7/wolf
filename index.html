@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#1e3a5f">
+<meta name="theme-color" content="#0f1522">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Battle Tees</title>
@@ -21,12 +21,13 @@
 </style>
 <style>
   :root{
-    --green:#1e3a5f; --green-mid:#2d5a8f; --green-lt:#e8eef6;
-    --green-dk:#142a45;
-    --amber:#8a6414; --amber-bd:#b08d3e; --amber-lt:#f7ecd2; --amber-dk:#6f5619;
-    --ink:#232838; --ink2:#5c6172; --ink3:#8f94a3;
-    --line:#ded4b9; --bg:#f3eee0; --card:#fffdf6;
-    --red:#7f1d1d; --red-lt:#f3e2e2;
+    --green:#c9a227; --green-mid:#e8c552; --green-lt:#2e2a16;
+    --green-dk:#6e5716;
+    --amber:#ffb454; --amber-bd:#c76a1d; --amber-lt:#33200e; --amber-dk:#7c3f00;
+    --ink:#eae3cf; --ink2:#b0a88f; --ink3:#807a67;
+    --line:#38445e; --bg:#0f1522; --card:#1b2433;
+    --red:#e8604f; --red-lt:#391410;
+    --elec:#4aa8ff; --elec-mid:#7cc3ff; --elec-dk:#0e3d75; --elec-lt:#122a44;
   }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
   html,body{height:100%}
@@ -35,9 +36,9 @@
     -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}
   #app{max-width:480px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column}
   .num{font-family:Rajdhani,Inter,sans-serif;font-weight:700}
-  header.top{background:var(--green);color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:5}
+  header.top{background:#151d2c;color:var(--green-mid);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:5;border-bottom:2px solid var(--green-dk)}
   header.top h1{font-size:17px;font-weight:600;letter-spacing:.3px}
-  header.top .sub{font-size:12px;opacity:.85}
+  header.top .sub{font-size:12px;opacity:.8;color:var(--ink2)}
   header.top button{background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:600;font-family:inherit}
   main{flex:1;padding:14px 14px 90px}
   .card{background:var(--card);border:2px solid var(--green);border-radius:10px;padding:14px;margin-bottom:16px;box-shadow:4px 4px 0 var(--green)}
@@ -47,38 +48,40 @@
   .row+.row{border-top:1px solid var(--line)}
   .muted{color:var(--ink2);font-size:13px}
   .tiny{color:var(--ink3);font-size:12px}
-  button.big{display:block;width:100%;background:var(--green);color:#f3ead1;border:2px solid var(--green-dk);border-radius:10px;
-    padding:14px;font-size:16px;font-weight:600;font-family:inherit;margin-top:8px;box-shadow:3px 3px 0 var(--green-dk)}
-  button.big:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--green-dk)}
-  button.big:disabled{background:#a9b2c2;border-color:#8d97a9;box-shadow:none;color:#f0f2f5}
+  button.big{display:block;width:100%;background:#2b86ec;color:#eef6ff;border:2px solid var(--elec-dk);border-radius:10px;
+    padding:14px;font-size:16px;font-weight:600;font-family:inherit;margin-top:8px;box-shadow:3px 3px 0 var(--elec-dk)}
+  button.big:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--elec-dk)}
+  button.big:disabled{background:#39435a;border-color:#2c3550;box-shadow:none;color:#8792a8}
   button.big.warn{background:var(--amber-bd);border-color:var(--amber-dk);box-shadow:3px 3px 0 var(--amber-dk);color:#fffdf6}
   button.big.warn:active{box-shadow:1px 1px 0 var(--amber-dk)}
+  button.big.danger{background:var(--red);border-color:#7f1f16;box-shadow:3px 3px 0 #7f1f16;color:#fff2ef}
+  button.big.danger:active{box-shadow:1px 1px 0 #7f1f16}
   button.ghost{background:var(--card);border:2px solid var(--green);border-radius:8px;padding:8px 13px;font-size:13px;font-weight:600;color:var(--green);font-family:inherit;box-shadow:2px 2px 0 var(--green)}
   button.ghost:active{transform:translate(1px,1px);box-shadow:1px 1px 0 var(--green)}
-  button.ghost.sel{background:var(--green-lt)}
-  button.ghost.danger{color:var(--red);border-color:var(--red);box-shadow:2px 2px 0 var(--red)}
-  button.ghost.danger:active{box-shadow:1px 1px 0 var(--red)}
+  button.ghost.sel{background:var(--elec-lt);border-color:var(--elec);color:var(--elec-mid);box-shadow:2px 2px 0 var(--elec-dk)}
+  button.ghost.danger{background:var(--red);color:#fff2ef;border-color:#7f1f16;box-shadow:2px 2px 0 #7f1f16}
+  button.ghost.danger:active{box-shadow:1px 1px 0 #7f1f16}
   .seg{display:flex;gap:6px}
   .seg button{flex:1}
   input[type=text],input[type=number]{border:2px solid var(--line);border-radius:8px;padding:8px 10px;font-size:15px;font-family:inherit;width:100%;background:var(--card);color:var(--ink)}
-  input:focus{outline:2px solid var(--green-mid);border-color:transparent}
+  input:focus{outline:2px solid var(--elec);border-color:transparent}
   select{background:var(--card)}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .stepper{display:flex;align-items:center;gap:8px}
-  .stepper button{width:38px;height:38px;border-radius:8px;border:2px solid var(--green);background:var(--card);font-size:20px;color:var(--green);font-family:inherit;flex:none;box-shadow:2px 2px 0 var(--green)}
-  .stepper button:active{transform:translate(1px,1px);box-shadow:1px 1px 0 var(--green)}
+  .stepper button{width:38px;height:38px;border-radius:8px;border:2px solid var(--elec);background:var(--card);font-size:20px;color:var(--elec-mid);font-family:inherit;flex:none;box-shadow:2px 2px 0 var(--elec-dk)}
+  .stepper button:active{transform:translate(1px,1px);box-shadow:1px 1px 0 var(--elec-dk)}
   .stepper .val{min-width:34px;text-align:center;font-size:22px}
   .stepper.mini button{width:28px;height:28px;border-radius:8px;font-size:15px}
   .stepper.mini .val{min-width:20px;font-size:17px}
   .stepper.mini{gap:5px}
   .banner{border-radius:8px;padding:9px 12px;font-size:13.5px;font-weight:600;margin-bottom:12px;border:2px solid}
   .banner.wolf{background:var(--amber-lt);color:var(--amber);border-color:var(--amber-bd);box-shadow:2px 2px 0 var(--amber-bd)}
-  .banner.ok{background:var(--green-lt);color:var(--green);border-color:var(--green);box-shadow:2px 2px 0 var(--green)}
+  .banner.ok{background:var(--elec-lt);color:var(--elec-mid);border-color:var(--elec);box-shadow:2px 2px 0 var(--elec-dk)}
   .banner.carry{background:var(--red-lt);color:var(--red);border-color:var(--red);box-shadow:2px 2px 0 var(--red)}
-  .dots{color:var(--green-mid);letter-spacing:2px;font-size:11px}
+  .dots{color:var(--elec);letter-spacing:2px;font-size:11px}
   .pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11.5px;font-weight:600}
   .pill.wolf{background:var(--amber-lt);color:var(--amber)}
-  .pill.gray{background:#ece6d4;color:var(--ink2)}
+  .pill.gray{background:#2a3348;color:var(--ink2)}
   table.st{width:100%;border-collapse:collapse;font-size:14px}
   table.st th{text-align:left;font-size:11px;color:var(--ink3);text-transform:uppercase;letter-spacing:.5px;padding:4px 6px;border-bottom:1px solid var(--line)}
   table.st td{padding:7px 6px;border-bottom:1px solid var(--line)}
@@ -87,18 +90,18 @@
   nav.tabs{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;
     background:var(--card);border-top:2px solid var(--green);display:flex;z-index:6;padding-bottom:env(safe-area-inset-bottom)}
   nav.tabs button{flex:1;background:none;border:none;padding:11px 0 9px;font-size:12px;font-weight:600;color:var(--ink3);font-family:inherit}
-  nav.tabs button.sel{color:var(--green)}
+  nav.tabs button.sel{color:var(--elec-mid)}
   nav.tabs .ic{display:block;font-size:19px;margin-bottom:1px}
   .holegrid{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}
   .holegrid button{border:1.5px solid var(--line);background:var(--card);border-radius:8px;padding:6px 0;font-family:Rajdhani,sans-serif;font-weight:700;font-size:16px;color:var(--ink2)}
   .holegrid button.done{background:var(--green-lt);color:var(--green);border-color:var(--green)}
-  .holegrid button.cur{outline:2px solid var(--green);outline-offset:1px}
-  .pickcard{border:2px solid var(--green);border-radius:10px;padding:11px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--card);box-shadow:2px 2px 0 var(--green)}
-  .pickcard:active{transform:translate(1px,1px);box-shadow:1px 1px 0 var(--green)}
-  .wolfcard{display:flex;align-items:center;gap:12px;background:#f9f0d9;border:2px solid var(--amber-bd);border-radius:10px;padding:11px 12px;margin-bottom:14px;box-shadow:3px 3px 0 var(--amber-bd)}
+  .holegrid button.cur{outline:2px solid var(--elec);outline-offset:1px}
+  .pickcard{border:2px solid var(--elec);border-radius:10px;padding:11px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--card);box-shadow:2px 2px 0 var(--elec-dk)}
+  .pickcard:active{transform:translate(1px,1px);box-shadow:1px 1px 0 var(--elec-dk)}
+  .wolfcard{display:flex;align-items:center;gap:12px;background:var(--amber-lt);border:2px solid var(--amber-bd);border-radius:10px;padding:11px 12px;margin-bottom:14px;box-shadow:3px 3px 0 var(--amber-bd)}
   .wolfcard .tiny{color:var(--amber);opacity:.85}
   .wolf-ic{font-size:24px;display:inline-block}
-  .pickcard.active{border-color:var(--amber-bd);background:#f9f0d9;box-shadow:2px 2px 0 var(--amber-bd)}
+  .pickcard.active{border-color:var(--amber-bd);background:var(--amber-lt);box-shadow:2px 2px 0 var(--amber-bd)}
   .pickcard.decided{opacity:.6}
   .scorebar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 0}
   .scorebar+.scorebar{border-top:1px solid var(--line)}
@@ -114,11 +117,29 @@
   .sc td.nm,.sc th.nm{font-family:Inter,-apple-system,sans-serif;font-size:12px;text-align:left;position:sticky;left:0;background:var(--card);min-width:56px;max-width:96px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:8px;font-stretch:normal;letter-spacing:0}
   .sc .parrow td{color:var(--ink3);font-weight:500}
   .sc td.tt{font-weight:700}
-  .sc td.bir{background:#e3efe3;color:#1c5c34}
-  .sc td.eag{background:#cde5d2;color:#1c5c34}
+  .sc td.bir{background:#14301d;color:#7fd49a}
+  .sc td.eag{background:#0f3a24;color:#9fe8b8}
   .sc td.bog{background:var(--amber-lt);color:var(--amber)}
   .sc td.dbl{background:var(--red-lt);color:var(--red)}
   .sc td.e{color:var(--ink3);font-weight:400}
+  html.light{
+    --green:#a8823a; --green-mid:#8a6414; --green-lt:#f3e8c8;
+    --green-dk:#6e5716;
+    --amber:#7c4a00; --amber-bd:#c76a1d; --amber-lt:#faeeda; --amber-dk:#7c3f00;
+    --ink:#2a2416; --ink2:#6b6350; --ink3:#98917d;
+    --line:#d8cba4; --bg:#f3eee0; --card:#fffdf6;
+    --red:#c0392b; --red-lt:#f7e3e0;
+    --elec:#1f6fd0; --elec-mid:#164f9a; --elec-dk:#0e3d75; --elec-lt:#dbe9fb;
+  }
+  html.light button.big{color:#f4f9ff}
+  html.light header.top{color:#e8c552}
+  html.light header.top .sub{color:#b8ac8d}
+  html.light button.big:disabled{background:#c9cfd8;border-color:#aab3c0;color:#f5f7fa}
+  html.light .pill.gray{background:#ece6d4}
+  html.light .sc td.bir{background:#e3efe3;color:#1c5c34}
+  html.light .sc td.eag{background:#cde5d2;color:#1c5c34}
+  html.light button.ghost.sel{color:var(--elec)}
+  html.light nav.tabs button.sel{color:var(--elec)}
 </style>
 </head>
 <body>
@@ -176,6 +197,7 @@ function load(){
       if(!s.config.track)s.config.track={bunker:false,chips:false,pen:false};
       if(!s.share)s.share={on:false,code:null};
       if(!s.me)s.me={name:'',index:10};
+      if(!s.theme)s.theme='dark';
       if((s.config._v||2)<3){
         s.config._v=3;
         const fresh=builtinCourses();
@@ -214,7 +236,7 @@ function load(){
       return s;
     }}
   }catch(e){}
-  return {screen:'home',course:defaultCourse(),courses:builtinCourses(),playerLib:[],config:defaultConfig(),players:defaultPlayers(),round:blankRound(),share:{on:false,code:null},me:{name:'',index:10}};
+  return {screen:'home',course:defaultCourse(),courses:builtinCourses(),playerLib:[],config:defaultConfig(),players:defaultPlayers(),round:blankRound(),share:{on:false,code:null},me:{name:'',index:10},theme:'dark'};
 }
 function syncLib(){
   if(!S.courses)return;
@@ -224,6 +246,12 @@ function syncLib(){
 }
 function save(){try{syncLib();localStorage.setItem(LS_KEY,JSON.stringify(S));}catch(e){}}
 function set(fn){fn();stampChanges();save();syncPush();render();}
+function applyTheme(){
+  document.documentElement.classList.toggle('light',S.theme==='light');
+  const m=document.querySelector('meta[name=theme-color]');
+  if(m)m.content=S.theme==='light'?'#f3eee0':'#0f1522';
+}
+function setTheme(t){set(()=>{S.theme=t;});applyTheme();}
 
 // ---------- live sync (relay on the Pi via Tailscale Funnel) ----------
 const RELAY=localStorage.getItem('wolfRelay')||'wss://raspi5.tail734d97.ts.net/wolf';
@@ -656,9 +684,9 @@ function vHome(){
   ${inRound?`<div class="card"><h2>Round in progress</h2>
     <div class="muted mb">${esc(S.course.name)} · thru ${S.round.holes.filter(r=>r.confirmed).length} holes</div>
     <button class="big" onclick="go('hole')">Continue round</button>
-    <button class="big warn mt" onclick="endRound()">End round now</button>
+    <button class="big danger mt" onclick="endRound()">End round now</button>
     ${S.share.on?`<div class="row mt" style="border-top:1px solid var(--line)">
-        <span class="tiny">Live sync · <b class="num" style="font-size:16px;letter-spacing:2px">${esc(S.share.code)}</b> ${sockOpen?'<span style="color:var(--green-mid)">● connected</span>':'<span style="color:var(--red)">○ reconnecting…</span>'}</span>
+        <span class="tiny">Live sync · <b class="num" style="font-size:16px;letter-spacing:2px">${esc(S.share.code)}</b> ${sockOpen?'<span style="color:var(--elec)">● connected</span>':'<span style="color:var(--red)">○ reconnecting…</span>'}</span>
         <button class="ghost danger" onclick="leaveShare()">Leave</button></div>`
       :`<button class="ghost mt" style="width:100%" onclick="shareRound()">Share this round with other phones</button>`}
   </div>`:''}
@@ -671,9 +699,22 @@ function vHome(){
         ${active?`<button class="ghost sel" onclick="go('course')">Edit</button>`
           :S.courses.length>1?`<button class="ghost danger" onclick="delCourse(${i})">${armDelCourse===i?'Delete?':'✕'}</button>`:''}
       </div>`;}).join('')}
-    ${finder.status==='idle'?`<div class="mt" style="display:flex;gap:6px">
-      <button class="ghost" onclick="addCourse()">Add course — find nearest</button>
+    ${finder.status==='idle'?`<div class="mt" style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="ghost" onclick="addCourse()">📍 Find nearest</button>
+      <button class="ghost" onclick="openCourseSearch()">🔎 Search by name</button>
       <button class="ghost" onclick="addBlankCourse()">Add blank</button></div>`:''}
+    ${finder.status==='search'?`<div class="mt">
+      <input type="text" id="courseQ" placeholder="Course name — e.g. Pebble Beach" onkeydown="if(event.key==='Enter')runCourseSearch()">
+      <div class="mt" style="display:flex;gap:6px">
+        <button class="ghost sel" style="flex:1" onclick="runCourseSearch()">Search</button>
+        <button class="ghost" onclick="cancelFind()">Cancel</button></div>
+      ${finder.error?`<div class="tiny mt">${esc(finder.error)}</div>`:''}</div>`:''}
+    ${finder.status==='searchResults'?`<div class="mt"><div class="tiny mb">Results for “${esc(finder.q||'')}” — closest first:</div>
+      ${finder.results.map((c,j)=>`<div class="row"><div><b>${esc(c.name)}</b><div class="tiny">${esc(c.city||'')}${c.state?`, ${esc(c.state)}`:''}${c.km!=null?` · ${(c.km*0.621).toFixed(c.km>160?0:1)} mi`:''}</div></div>
+      <button class="ghost sel" onclick="useSearchResult(${j})">Use</button></div>`).join('')}
+      <div class="mt" style="display:flex;gap:6px">
+        <button class="ghost" onclick="openCourseSearch()">Search again</button>
+        <button class="ghost" onclick="cancelFind()">Cancel</button></div></div>`:''}
     ${finder.status==='locating'?'<div class="tiny mt">📍 Locating the nearest course…</div>':''}
     ${finder.status==='fetching'?'<div class="tiny mt">⬇ Downloading hole data…</div>':''}
     ${finder.status==='choices'?`<div class="mt"><div class="tiny mb">Nearest courses:</div>
@@ -759,6 +800,12 @@ function vHome(){
   <div class="card"><h2>New round</h2>
     <div class="tiny mb">Players, handicaps, tees and point values are set on the next screen. Starting a round with nearby players invites their phones automatically.</div>
     <button class="big" onclick="go('setup')">${inRound?'Set up a new round':'Set up round'}</button></div>
+  <div class="center" style="margin:2px 0 12px">
+    <span class="seg" style="display:inline-flex;gap:6px">
+      <button class="ghost ${S.theme==='light'?'sel':''}" style="white-space:nowrap" onclick="setTheme('light')">☀ Light</button>
+      <button class="ghost ${S.theme!=='light'?'sel':''}" style="white-space:nowrap" onclick="setTheme('dark')">🌙 Dark</button>
+    </span>
+  </div>
   ${!S.share.on?`<details class="card" style="padding:10px 14px"><summary class="tiny" style="cursor:pointer;color:var(--ink3)">Join a shared round with a code (backup)</summary>
     <div class="row" style="border:none">
       <input type="text" id="joincode" placeholder="ABCDE" maxlength="8" autocapitalize="characters" style="width:46%;text-transform:uppercase;font-family:Rajdhani,sans-serif;font-size:20px;letter-spacing:3px">
@@ -859,6 +906,63 @@ async function piCourseLookup(q,lat,lon){
     catch(e){clearTimeout(pendingCourse[rid].timer);delete pendingCourse[rid];rej(e);}
   });
 }
+function applyGhinCourse(g){
+  syncLib();
+  const parts=String(g.matched||'').split(' - ');
+  const shownName=(parts.length===2&&parts[0].trim()===parts[1].trim())?parts[0].trim():(g.matched||g.course.name);
+  S.course={id:'ghin-'+Date.now(),name:g.course.name,
+    teeSets:g.course.teeSets.map((t,i)=>({id:'t'+Date.now()+i,name:t.name,rating:+t.rating||72,slope:+t.slope||113})),
+    holes:g.course.holes,_noteOk:true,
+    _note:`Loaded from USGA/GHIN: ${shownName}${g.city?` (${g.city}, ${String(g.state||'').replace('US-','')})`:''} — pars, stroke indexes, tee ratings and slopes all included.`};
+  const t=S.course.teeSets[Math.min(1,S.course.teeSets.length-1)].id;
+  S.players.forEach(p=>p.tee=t);
+  finder={status:'idle',choices:[],error:''};
+  S.screen='course';save();render();
+}
+function openCourseSearch(){
+  finder={status:'search',choices:[],results:[],error:''};
+  grabCoords();
+  render();
+  const el=document.getElementById('courseQ');
+  if(el)el.focus();
+}
+async function runCourseSearch(){
+  const el=document.getElementById('courseQ');
+  const q=(el&&el.value||'').trim();
+  if(q.length<3){finder.error='Type at least 3 letters of the course name.';render();return;}
+  finder={status:'fetching',choices:[],results:[],error:''};render();
+  try{
+    const r=await piCourseLookup2({mode:'search',q,lat:myCoords?myCoords[0]:null,lon:myCoords?myCoords[1]:null});
+    if(r.ok&&r.list&&r.list.length){finder={status:'searchResults',choices:[],results:r.list,q,error:''};}
+    else finder={status:'error',choices:[],results:[],error:r.error||'No courses found.'};
+  }catch(e){finder={status:'error',choices:[],results:[],error:'Could not reach the Pi — check your connection.'};}
+  render();
+}
+async function useSearchResult(j){
+  const c=(finder.results||[])[j];
+  if(!c)return;
+  finder={status:'fetching',choices:[],results:[],error:''};render();
+  try{
+    const g=await piCourseLookup2({mode:'get',course_id:c.id,q:c.name});
+    if(g.ok&&g.course&&g.course.holes&&g.course.teeSets.length){
+      g.city=c.city;g.state=c.state;
+      applyGhinCourse(g);
+      return;
+    }
+    finder={status:'error',choices:[],results:[],error:g.error||'Could not load that course.'};
+  }catch(e){finder={status:'error',choices:[],results:[],error:'Could not reach the Pi — check your connection.'};}
+  render();
+}
+function piCourseLookup2(payload){
+  return new Promise(async (res,rej)=>{
+    const ws=await waitForRelay(6000);
+    if(!ws)return rej(new Error('relay offline'));
+    const rid='c'+Math.random().toString(36).slice(2,8);
+    pendingCourse[rid]={res,timer:setTimeout(()=>{delete pendingCourse[rid];rej(new Error('timeout'));},20000)};
+    try{ws.send(JSON.stringify({t:'course',rid,...payload}));}
+    catch(e){clearTimeout(pendingCourse[rid].timer);delete pendingCourse[rid];rej(e);}
+  });
+}
 async function useFoundCourse(idx){
   const c=finder.choices[idx];
   finder={status:'fetching',choices:[],error:''};render();
@@ -866,17 +970,7 @@ async function useFoundCourse(idx){
   let g=null;
   try{g=await piCourseLookup(c.name,c.lat,c.lon);}catch(e){}
   if(g&&g.ok&&g.course&&g.course.holes&&g.course.teeSets.length){
-    syncLib();
-    const parts=String(g.matched||'').split(' - ');
-    const shownName=(parts.length===2&&parts[0].trim()===parts[1].trim())?parts[0].trim():(g.matched||g.course.name);
-    S.course={id:'ghin-'+Date.now(),name:g.course.name,
-      teeSets:g.course.teeSets.map((t,i)=>({id:'t'+Date.now()+i,name:t.name,rating:+t.rating||72,slope:+t.slope||113})),
-      holes:g.course.holes,_noteOk:true,
-      _note:`Loaded from USGA/GHIN: ${shownName}${g.city?` (${g.city}, ${String(g.state||'').replace('US-','')})`:''} — pars, stroke indexes, tee ratings and slopes all included.`};
-    const t=S.course.teeSets[Math.min(1,S.course.teeSets.length-1)].id;
-    S.players.forEach(p=>p.tee=t);
-    finder={status:'idle',choices:[],error:''};
-    S.screen='course';save();render();
+    applyGhinCourse(g);
     return;
   }
   // 2) fallback: OpenStreetMap hole data
@@ -1272,6 +1366,7 @@ function newRound(){
   set(()=>{S.round=blankRound();S.screen='setup';});
 }
 
+applyTheme();
 render();
 if(S.share&&S.share.on){primeCaches(false);syncConnect();}
 else lobbyConnect();
