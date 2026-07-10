@@ -122,6 +122,8 @@
   .teambox{border:2px solid #2ea043;border-radius:10px;padding:4px 12px 8px;margin-bottom:12px;background:rgba(46,160,67,.06)}
   .teambox .vnum{font-family:Rajdhani,Inter,sans-serif;font-weight:700;font-size:30px;line-height:1;color:#2ea043}
   .teambox.flipped .vnum{color:var(--red)}
+  .vtabs{display:flex;gap:6px;overflow-x:auto;margin:0 0 12px;padding-bottom:3px;-webkit-overflow-scrolling:touch}
+  .vtabs button{flex:none;white-space:nowrap}
   .nine-ph{font-family:Rajdhani,Inter,sans-serif;font-weight:700;font-size:54px;color:var(--elec);width:84px;text-align:center;flex:none;text-shadow:0 0 14px rgba(74,168,255,.65)}
   .ninecard{display:flex;align-items:center;gap:12px;background:rgba(74,168,255,.10);border:2px solid var(--elec);border-radius:10px;padding:11px 12px;margin-bottom:14px;box-shadow:3px 3px 0 var(--elec-dk);overflow:hidden}
   .ninecard .tiny{color:var(--elec);opacity:.9}
@@ -1567,6 +1569,7 @@ function chPt(k,d){set(()=>{S.config.pts[k]=Math.max(0,S.config.pts[k]+d);});}
 function chAllow(d){set(()=>{S.config.allowance=Math.min(100,Math.max(50,S.config.allowance+d));});}
 function startRound(){
   const withNearby=S.players.some(p=>p.nearby);
+  stView=null;
   set(()=>{S.round=blankRound();S.round.started=true;S.round.game=S.config.game;S.screen='hole';
     if(S.config.game!=='wolf')prefillNines(0);});
   if(withNearby&&!S.share.on)shareRound();
@@ -1861,21 +1864,116 @@ function scorecardHTML(){
   });
   return html+'</table></div>';
 }
+// What-if scoring views: any game that derives purely from the gross-score
+// spine can be replayed over the same round. Wolf can't (it depends on tee
+// order and live picks), so it only appears as the primary view of a Wolf round.
+let stView=null;
+function setStView(v){stView=v;render();}
+function stViews(){
+  const g=S.round.game||S.config.game||'wolf';
+  const four=NP()===4;
+  const v=[[g,gameName(g)]];
+  v.push(['stroke','Stroke']);
+  v.push(['stableford','Stableford']);
+  if(four)v.push(['match','Match']);
+  if(g!=='nines')v.push(['nines','9’s']);
+  if(g!=='vegas'&&four)v.push(['vegas','Vegas']);
+  return v;
+}
+function lensScore(rec,i,h,L){const g=rec.gross[i];return g==null?null:(L==='net'?g-dotsOn(i,h):g);}
+function computeStroke(){
+  const led={net:[0,0,0,0],gross:[0,0,0,0]},par={net:[0,0,0,0],gross:[0,0,0,0]};
+  for(let h=0;h<HOLES;h++){const rec=S.round.holes[h];if(!rec.confirmed)continue;
+    for(const L of ['net','gross'])actIdx().forEach(i=>{const s=lensScore(rec,i,h,L);
+      if(s!=null){led[L][i]+=s;par[L][i]+=S.course.holes[h].par;}});}
+  return {ledgers:led,par};
+}
+function computeStableford(){
+  const led={net:[0,0,0,0],gross:[0,0,0,0]};
+  for(let h=0;h<HOLES;h++){const rec=S.round.holes[h];if(!rec.confirmed)continue;
+    const p=S.course.holes[h].par;
+    for(const L of ['net','gross'])actIdx().forEach(i=>{const s=lensScore(rec,i,h,L);if(s==null)return;
+      const d=s-p;led[L][i]+=d<=-3?5:d===-2?4:d===-1?3:d===0?2:d===1?1:0;});}
+  return {ledgers:led};
+}
+function matchTeams(){
+  const P=[[[0,1],[2,3]],[[0,2],[1,3]],[[0,3],[1,2]]];
+  return P[(S.config.vegas&&S.config.vegas.pairing)||0];
+}
+function computeMatch(L){
+  const T=matchTeams();
+  let up=0,thru=0,clinch=null;
+  for(let h=0;h<HOLES;h++){
+    const rec=S.round.holes[h];if(!rec.confirmed)continue;
+    thru++;
+    const best=t=>Math.min(...t.map(i=>{const s=lensScore(rec,i,h,L);return s==null?99:s;}));
+    const a=best(T[0]),b=best(T[1]);
+    if(a<b)up++;else if(b<a)up--;
+    if(!clinch&&Math.abs(up)>18-(h+1))clinch={margin:Math.abs(up),left:18-(h+1),team:up>0?0:1};
+  }
+  return {T,up,thru,clinch};
+}
+function teamPickerRow(){
+  const P=[[[0,1],[2,3]],[[0,2],[1,3]],[[0,3],[1,2]]];
+  const cur=(S.config.vegas&&S.config.vegas.pairing)||0;
+  const nm=i=>esc((S.players[i].name||'').split(' ')[0]);
+  return `<div class="mt" style="display:flex;gap:6px;flex-wrap:wrap">${P.map((T,pi)=>
+    `<button class="ghost ${cur===pi?'sel':''}" onclick="set(()=>S.config.vegas.pairing=${pi})">${nm(T[0][0])}+${nm(T[0][1])} v ${nm(T[1][0])}+${nm(T[1][1])}</button>`).join('')}</div>`;
+}
 function vStandings(){
-  const all=computeGame();
+  const g=S.round.game||S.config.game||'wolf';
+  const views=stViews();
+  if(stView&&!views.some(([k])=>k===stView))stView=null;
+  const view=stView||g;
   const thru=S.round.holes.filter(r=>r.confirmed).length;
   const cols=['gross','net'].filter(L=>activeLenses().includes(L));
   const prim=primaryLens();
-  const order=actIdx().sort((a,b)=>all.ledgers[prim][b]-all.ledgers[prim][a]);
   const lbl=L=>L==='net'?'Net (hcp)':'Gross';
-  const tables=`<div class="card"><h2>Standings · thru ${thru}</h2>
-    <table class="st"><tr><th>Player</th>${cols.map(L=>`<th class="r">${lbl(L)}</th>`).join('')}</tr>
-    ${order.map(i=>`<tr><td>${esc(S.players[i].name)}</td>${cols.map(L=>`<td class="r num" style="font-size:20px;${L!==prim&&cols.length>1?'color:var(--ink2);font-size:16px':''}">${ptsTxt(all.ledgers[L][i])}</td>`).join('')}</tr>`).join('')}
-    </table>
-    ${cols.length>1?`<div class="tiny mt">Sorted by ${lbl(prim).toLowerCase()} points.</div>`:''}
-    ${cols.map(L=>all.carries[L]>0?`<div class="banner carry mt">${lbl(L)}: ${all.carries[L]} hole${all.carries[L]>1?'s':''} carried — next decided hole pays ×${all.carries[L]+1}</div>`:'').join('')}
-  </div>`;
-  const hist=S.round.holes.map((r,h)=>{
+  const vtabs=`<div class="vtabs">${views.map(([k,l])=>
+    `<button class="ghost ${view===k?'sel':''}" onclick="setStView(${k===g?'null':`'${k}'`})">${k===g?'⛳ ':''}${l}</button>`).join('')}</div>`;
+  const whatIf=view!==g?`<div class="tiny mb">What-if view from the same scores — settlement still pays by ${gameName(g)}.</div>`:'';
+  const genericCard=(title,led,fmt,asc,note)=>{
+    const order=actIdx().slice().sort((a,b)=>asc?led[prim][a]-led[prim][b]:led[prim][b]-led[prim][a]);
+    return `<div class="card"><h2>${title} · thru ${thru}</h2>${whatIf}
+      <table class="st"><tr><th>Player</th>${cols.map(L=>`<th class="r">${lbl(L)}</th>`).join('')}</tr>
+      ${order.map(i=>`<tr><td>${esc(S.players[i].name)}</td>${cols.map(L=>`<td class="r num" style="font-size:20px;${L!==prim&&cols.length>1?'color:var(--ink2);font-size:16px':''}">${fmt(led[L][i],L,i)}</td>`).join('')}</tr>`).join('')}
+      </table>${note||''}</div>`;
+  };
+  let all=null,tables='';
+  if(view===g){
+    all=computeGame();
+    const carryNote=cols.map(L=>all.carries[L]>0?`<div class="banner carry mt">${lbl(L)}: ${all.carries[L]} hole${all.carries[L]>1?'s':''} carried — next decided hole pays ×${all.carries[L]+1}</div>`:'').join('');
+    tables=genericCard('Standings',all.ledgers,v=>ptsTxt(v),false,
+      (cols.length>1?`<div class="tiny mt">Sorted by ${lbl(prim).toLowerCase()} points.</div>`:'')+carryNote);
+  }else if(view==='stroke'){
+    const st=computeStroke();
+    tables=genericCard('Stroke play',st.ledgers,(v,L,i)=>{if(!thru)return '–';const d=v-st.par[L][i];
+      return `${v} <span style="font-size:12px">${d===0?'E':(d>0?'+':'')+d}</span>`;},true,
+      `<div class="tiny mt">Total strokes over confirmed holes — lowest wins.</div>`);
+  }else if(view==='stableford'){
+    tables=genericCard('Stableford',computeStableford().ledgers,v=>String(v),false,
+      `<div class="tiny mt">Par 2 · birdie 3 · eagle 4 · bogey 1 · double or worse 0. Highest wins.</div>`);
+  }else if(view==='nines'){
+    tables=genericCard('9’s',computeNines().ledgers,v=>fmtPts(v),false,
+      `<div class="tiny mt">Every hole splits 9 points — 5 · 3 · 1${NP()===4?' · 0':''}. Ties pool and split.</div>`);
+  }else if(view==='vegas'){
+    tables=genericCard('Vegas',computeVegas().ledgers,v=>String(v),false,teamPickerRow()+
+      `<div class="tiny mt">Team digits pair low-first; low number takes the difference. Birdies flip.</div>`);
+  }else if(view==='match'){
+    const blocks=cols.map(L=>{
+      const m=computeMatch(L);
+      const tn=t=>`${esc(S.players[m.T[t][0]].name)} & ${esc(S.players[m.T[t][1]].name)}`;
+      let status;
+      if(!m.thru)status='No holes confirmed yet';
+      else if(m.clinch)status=`${tn(m.clinch.team)} win ${m.clinch.margin}${m.clinch.left?`&${m.clinch.left}`:' UP'}`;
+      else if(m.up===0)status=`All square thru ${m.thru}`;
+      else status=`${tn(m.up>0?0:1)} ${Math.abs(m.up)} UP thru ${m.thru}${Math.abs(m.up)===18-m.thru?' — dormie':''}`;
+      return `<div class="center mb">${cols.length>1?`<div class="tiny">${lbl(L)}</div>`:''}<span class="bigscore num" style="font-size:24px">${status}</span></div>`;
+    }).join('');
+    tables=`<div class="card"><h2>Match play · best ball · thru ${thru}</h2>${whatIf}${blocks}${teamPickerRow()}
+      <div class="tiny mt">Better ball of each team wins the hole; most holes up wins the match.</div></div>`;
+  }
+  const hist=all==null?'':S.round.holes.map((r,h)=>{
     if(!r.confirmed)return '';
     const info=all.perHole[h];
     const res=info.results[prim];
@@ -1898,7 +1996,7 @@ function vStandings(){
     let out=res?(res.tie?'pushed':`${res.wolfWon?'wolf side':'field'} +${res.per*res.mult}`):'';
     return `<div class="row" onclick="jumpAndGo(${h})" style="cursor:pointer">
       <span><b class="num">${h+1}</b> · 🐺 ${esc(S.players[r.wolfAt].name)} ${modeLbl}</span>
-      <span class="muted">${out}${S.course.holes[h].par===3&&r.ctp>=0?` · CTP ${esc(S.players[r.ctp].name)}`:''}</span></div>`;
+      <span class="muted">${out}${S.course.holes[h].par===3&&r.ctp!=null&&r.ctp>=0?` · CTP ${esc(S.players[r.ctp].name)}`:''}</span></div>`;
   }).join('');
   const en=trackKeys();
   const statsCard=en.length?`<div class="card"><h2>Round stats</h2>
@@ -1910,8 +2008,8 @@ function vStandings(){
   const extra=(thru>0?`
     <div class="card"><h2>Scorecard · gross strokes</h2>${scorecardHTML()}
       <div class="tiny mt">Green = under par · amber = bogey · red = double or worse. Swipe the card sideways.</div></div>`:'')+statsCard;
-  return topbar('Standings',esc(S.course.name),'')+`<main>${tables}${extra}
-    <div class="card"><h2>Hole history (tap to edit)</h2>${hist||'<div class="muted">No holes confirmed yet.</div>'}</div>
+  return topbar('Standings',esc(S.course.name),'')+`<main>${vtabs}${tables}${extra}
+    ${all!=null?`<div class="card"><h2>Hole history (tap to edit)</h2>${hist||'<div class="muted">No holes confirmed yet.</div>'}</div>`:''}
   </main>`+tabs('standings');
 }
 function jumpAndGo(h){set(()=>{S.round.cur=h;S.screen='hole';});}
@@ -1952,7 +2050,7 @@ function vSettle(){
 let armNewRound=false;
 function newRound(){
   if(!armNewRound){armNewRound=true;render();setTimeout(()=>{if(armNewRound){armNewRound=false;render();}},4000);return;}
-  armNewRound=false;
+  armNewRound=false;stView=null;
   if(S.share.on)leaveShare();
   set(()=>{S.round=blankRound();S.screen='setup';});
 }
