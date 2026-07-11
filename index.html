@@ -2175,7 +2175,7 @@ function vStandings(){
     const order=actIdx().slice().sort((a,b)=>asc?led[prim][a]-led[prim][b]:led[prim][b]-led[prim][a]);
     return `<div class="card"><h2>${title} · thru ${thru}</h2>${whatIf}
       <table class="st"><tr><th>Player</th>${cols.map(L=>`<th class="r">${lbl(L)}</th>`).join('')}</tr>
-      ${order.map(i=>`<tr><td>${esc(S.players[i].name)}</td>${cols.map(L=>`<td class="r num" style="font-size:27px;${L!==prim&&cols.length>1?'color:var(--ink2);font-size:20px':''}">${fmt(led[L][i],L,i)}</td>`).join('')}</tr>`).join('')}
+      ${order.map(i=>`<tr><td>${esc(S.players[i].name)}</td>${cols.map(L=>`<td class="r num" style="font-size:34px;${L!==prim&&cols.length>1?'color:var(--ink2);font-size:25px':''}">${fmt(led[L][i],L,i)}</td>`).join('')}</tr>`).join('')}
       </table>${note||''}</div>`;
   };
   let all=null,tables='';
@@ -2186,7 +2186,7 @@ function vStandings(){
       <table class="st"><tr><th>Team</th>${cols.map(L=>`<th class="r">${lbl(L)}</th>`).join('')}</tr>
       ${rows.map(t=>`<tr><td>${t.map(i=>esc(S.players[i].name)).join(' &amp; ')}</td>${cols.map(L=>{
         const vv=sc.ledgers[L][t[0]],d=vv-sc.par[L][t[0]];
-        return `<td class="r num" style="font-size:27px;${L!==prim&&cols.length>1?'color:var(--ink2);font-size:20px':''}">${thru?`${vv} <span style="font-size:13px">${d===0?'E':(d>0?'+':'')+d}</span>`:'–'}</td>`;}).join('')}</tr>`).join('')}
+        return `<td class="r num" style="font-size:34px;${L!==prim&&cols.length>1?'color:var(--ink2);font-size:25px':''}">${thru?`${vv} <span style="font-size:17px">${d===0?'E':(d>0?'+':'')+d}</span>`:'–'}</td>`;}).join('')}</tr>`).join('')}
       </table>${T.length===1?'':teamPickerRow()}
       <div class="tiny mt">${T.length===1?'Tournament tracker — one ball, whole group. Net plays off the 25/20/15/10% four-player allowance ('+scrambleStrokes()[0]+' strokes).':'One ball per team — lowest total wins. Net gives the higher-handicap team strokes via the 35%/15% scramble allowance.'}</div></div>`;
   }else if(view===g&&g==='bestball'){
@@ -2203,13 +2203,13 @@ function vStandings(){
     }).join('');
     tables=`<div class="card"><h2>Best Ball · thru ${thru}</h2>${blocks}
       <table class="st"><tr><th>Player</th>${cols.map(L=>`<th class="r">${lbl(L)} holes</th>`).join('')}</tr>
-      ${actIdx().slice().sort((a,b)=>bb.ledgers[prim][b]-bb.ledgers[prim][a]).map(i=>`<tr><td>${esc(S.players[i].name)}</td>${cols.map(L=>`<td class="r num" style="font-size:27px;${L!==prim&&cols.length>1?'color:var(--ink2);font-size:20px':''}">${bb.ledgers[L][i]}</td>`).join('')}</tr>`).join('')}
+      ${actIdx().slice().sort((a,b)=>bb.ledgers[prim][b]-bb.ledgers[prim][a]).map(i=>`<tr><td>${esc(S.players[i].name)}</td>${cols.map(L=>`<td class="r num" style="font-size:34px;${L!==prim&&cols.length>1?'color:var(--ink2);font-size:25px':''}">${bb.ledgers[L][i]}</td>`).join('')}</tr>`).join('')}
       </table>${teamPickerRow()}
       <div class="tiny mt">Better ball of each team wins the hole.</div></div>`;
   }else if(view===g&&g==='stroke'){
     const st=computeStroke();
     tables=genericCard('Stroke play',st.ledgers,(v,L,i)=>{if(!thru)return '-';const d=v-st.par[L][i];
-      return `${v} <span style="font-size:13px">${d===0?'E':(d>0?'+':'')+d}</span>`;},true,
+      return `${v} <span style="font-size:17px">${d===0?'E':(d>0?'+':'')+d}</span>`;},true,
       `<div class="tiny mt">Total strokes over confirmed holes — lowest wins.</div>`);
   }else if(view===g){
     all=computeGame();
@@ -2274,7 +2274,7 @@ function vStandings(){
     <table class="st"><tr><th>Player</th>${en.map(([k,l])=>`<th class="r">${l}</th>`).join('')}</tr>
     ${S.players.slice(0,NP()).map((p,i)=>`<tr><td>${esc(p.name)}</td>${en.map(([k])=>{
       const tot=S.round.holes.reduce((a,r)=>a+((r.stats&&r.stats[k])?r.stats[k][i]:0),0);
-      return `<td class="r num" style="font-size:22px">${tot}</td>`;
+      return `<td class="r num" style="font-size:26px">${tot}</td>`;
     }).join('')}</tr>`).join('')}</table></div>`:'';
   const extra=(thru>0?`
     <div class="card"><h2>Scorecard · gross strokes</h2>${scorecardHTML()}
