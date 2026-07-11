@@ -669,17 +669,20 @@ function runningTotalsCard(){
   const thru=S.round.holes.filter(r=>r.confirmed).length;
   if(!thru)return '';
   const L=primaryLens();
-  const fmt=(v,p)=>{const d=v-p;return `<span class="num" style="font-size:24px;font-weight:700">${v}</span> <span class="tiny">${d===0?'E':(d>0?'+':'')+d}</span>`;};
+  const fmt=(v,p)=>{const d=v-p;
+    const col=d<0?'#7fd49a':d>0?'var(--amber-bd)':'var(--ink2)';
+    return `<div class="num" style="font-size:32px;font-weight:700;line-height:1.05">${v}</div>
+      <div class="num" style="font-size:22px;font-weight:700;color:${col}">${d===0?'E':(d>0?'+':'')+d}</div>`;};
   let cells;
   if(gameOn()==='scramble'){
     const sc=computeScramble(),T=scrambleTeams();
-    cells=T.map(t=>`<div style="text-align:center;flex:1;min-width:70px"><div class="tiny" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.map(i=>esc((S.players[i].name||'').split(' ')[0])).join(' & ')}</div>${fmt(sc.ledgers[L][t[0]],sc.par[L][t[0]])}</div>`).join('');
+    cells=T.map(t=>`<div style="text-align:center;flex:1;min-width:70px"><div style="font-size:14px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px">${t.map(i=>esc((S.players[i].name||'').split(' ')[0])).join(' & ')}</div>${fmt(sc.ledgers[L][t[0]],sc.par[L][t[0]])}</div>`).join('');
   }else{
     const st=computeStroke();
-    cells=actIdx().map(i=>`<div style="text-align:center;flex:1;min-width:60px"><div class="tiny" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc((S.players[i].name||'').split(' ')[0])}</div>${fmt(st.ledgers[L][i],st.par[L][i])}</div>`).join('');
+    cells=actIdx().map(i=>`<div style="text-align:center;flex:1;min-width:60px"><div style="font-size:14px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px">${esc((S.players[i].name||'').split(' ')[0])}</div>${fmt(st.ledgers[L][i],st.par[L][i])}</div>`).join('');
   }
-  return `<div class="card" style="padding:10px 12px"><div style="display:flex;gap:4px">${cells}</div>
-    <div class="tiny" style="text-align:center;margin-top:2px">${L} strokes · thru ${thru}</div></div>`;
+  return `<div class="card" style="padding:14px 12px 10px"><div style="display:flex;gap:4px">${cells}</div>
+    <div class="tiny" style="text-align:center;margin-top:4px">${L} score · thru ${thru}</div></div>`;
 }
 function holeNavHTML(){
   const h=S.round.cur;
