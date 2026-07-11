@@ -632,6 +632,8 @@ function courseHandicaps(){
 }
 function playingStrokes(){
   const ch=courseHandicaps();
+  if(NP()===1) // solo round: net plays against the course, so the full handicap applies
+    return ch.map(c=>Math.max(0,Math.round(c*S.config.allowance/100)));
   const lo=Math.min(...actIdx().map(i=>ch[i]));  // low man among the players actually in the game
   return ch.map(c=>Math.max(0,Math.round((c-lo)*S.config.allowance/100)));
 }
@@ -650,7 +652,7 @@ function gameName(g){const x=g||gameOn();return x==='nines'?'9’s':x==='vegas'?
 function NP(){
   const g=gameOn();
   if(g==='nines'&&S.config.nines&&S.config.nines.n===3)return 3;
-  if(g==='stroke'&&S.config.stroke)return Math.min(4,Math.max(2,S.config.stroke.n||4));
+  if(g==='stroke'&&S.config.stroke)return Math.min(4,Math.max(1,S.config.stroke.n||4));
   return 4;
 }
 function actIdx(){return [0,1,2,3].slice(0,NP());}
@@ -1259,12 +1261,14 @@ function vRules(){
   const em=e=>`<span style="font-size:34px;flex:none">${e}</span>`;
   const li=items=>`<ul style="margin:6px 0 0;padding-left:20px">${items.map(x=>`<li style="margin-bottom:6px">${x}</li>`).join('')}</ul>`;
   return topbar('Rules','How each battle is fought','home')+`<main>
-  ${ruleCard(img('wolf.png',40),'Wolf','Rotating captain picks a partner — or goes alone',li([
-    '<b>Rotation:</b> the wolf rotates by tee order every hole and <b>hits first</b>. On the last two holes, last place is the wolf (house option).',
-    '<b>The pick:</b> after the drives, one tap picks a partner. Before anyone hits, the wolf may go <b>Lone</b> — or <b>Blind Lone</b> before even seeing the drives.',
-    `<b>Points:</b> wolf + partner win <b>${P.partnerWin}</b> each · field beats them <b>${P.fieldBeatsPartners}</b> each · lone wolf wins <b>${P.loneWin}</b> · field beats lone <b>${P.fieldBeatsLone}</b> each · blind wolf wins <b>${P.blindWin}</b> · field beats blind <b>${P.fieldBeatsBlind}</b> each.`,
+  ${ruleCard(img('wolf.png',40),'Wolf','First off the tee is the Wolf — pick a partner or go alone',li([
+    '<b>Who is the Wolf:</b> the <b>first player to tee off</b> on each hole. The order rotates every hole so everyone takes equal turns as the Wolf. On the last two holes, last place in points is the Wolf (house option).',
+    `<b>Blind Lone Wolf:</b> <b>before hitting his drive</b>, the Wolf can declare Blind Lone Wolf — alone against all three, sight unseen. The biggest gamble: win <b>${P.blindWin}</b>, but each field player wins <b>${P.fieldBeatsBlind}</b> if they beat him.`,
+    `<b>Lone Wolf:</b> <b>after hitting his drive</b> (and liking it), the Wolf can declare Lone Wolf — alone against the field for <b>${P.loneWin}</b>; each field player wins <b>${P.fieldBeatsLone}</b> if the field takes the hole.`,
+    '<b>Picking a partner — one shot at each:</b> the Wolf watches the <b>2nd player</b> tee off. Like the drive? Take him as partner. Pass, and the <b>3rd player</b> hits — but the 2nd player is now off the table, no going back. Same choice on the 3rd: take him, or pass and the 4th player hits — and at that point the Wolf is <b>stuck with player 4</b>, like it or not.',
+    `<b>Points:</b> Wolf + partner win <b>${P.partnerWin}</b> each · field beats the Wolf team, <b>${P.fieldBeatsPartners}</b> each.`,
     `<b>CTP:</b> closest to pin on par 3s is worth <b>${P.ctp}</b> — ball must be on the green, no carryover.`,
-    'Ties push (optional carryover doubles the next decided hole). Best ball of each side decides the hole.']))}
+    'Best ball of each side decides the hole. Ties push (optional carryover doubles the next decided hole).']))}
   ${ruleCard(img('nine.png',46),'9’s','Every hole is worth exactly 9 points',li([
     '<b>Split:</b> best score takes <b>5</b>, middle <b>3</b>, worst <b>1</b> — with four players the worst gets <b>0</b>.',
     '<b>Ties pool and split:</b> two tied for best share (5+3)/2 = 4 each; three-way ties split evenly.',
@@ -1703,9 +1707,9 @@ function vSetup(){
   ${stroke?`<div class="card"><h2>Stroke play</h2>
     <div class="row"><span class="muted">Players in the round</span>
       <span class="seg" style="display:inline-flex;gap:6px">
-        ${[2,3,4].map(n=>`<button class="ghost ${NP()===n?'sel':''}" onclick="set(()=>S.config.stroke.n=${n})">${n}</button>`).join('')}
+        ${[1,2,3,4].map(n=>`<button class="ghost ${NP()===n?'sel':''}" onclick="set(()=>S.config.stroke.n=${n})">${n}</button>`).join('')}
       </span></div>
-    <div class="tiny mt">Everyone plays their own ball — lowest total takes it. Use the Standings tabs mid-round for what-if games.</div>
+    <div class="tiny mt">${NP()===1?'Solo round — you against the course. Net plays off your full course handicap.':'Everyone plays their own ball — lowest total takes it. Use the Standings tabs mid-round for what-if games.'}</div>
   </div>`:''}
   ${nines?`<div class="card"><h2>9’s rules</h2>
     <div class="row"><span class="muted">Players in the game</span>
@@ -2389,7 +2393,7 @@ function vSettle(){
       <div class="center mb"><span class="bigscore num">${ptsTxt(led[order[0]])}</span><div class="muted">${leadTxt}</div></div>
       <table class="st"><tr><th>Player</th><th class="r">${['stroke','scramble'].includes(gameOn())?'Strokes':gameOn()==='bestball'?'Holes':'Pts'}</th></tr>
       ${order.map(i=>`<tr><td>${esc(S.players[i].name)}</td><td class="r num" style="font-size:18px">${ptsTxt(led[i])}</td></tr>`).join('')}</table>
-      <div class="mt"><h2>Pairwise (difference method)</h2>${pairs.length?pairs.map(p=>`<div class="row">${p}</div>`).join(''):'<div class="muted">All square.</div>'}</div>
+      ${act.length===1?'<div class="tiny mt">Solo round — nothing to settle. Beat the course.</div>':`<div class="mt"><h2>Pairwise (difference method)</h2>${pairs.length?pairs.map(p=>`<div class="row">${p}</div>`).join(''):'<div class="muted">All square.</div>'}</div>`}
     </div>`;
   }).join('');
   return topbar('Settlement','','')+`<main>
