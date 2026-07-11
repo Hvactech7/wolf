@@ -493,8 +493,15 @@ function bkEmail(){
   localStorage.setItem('wolfBackupEmail',em);
   return em;
 }
+let armEmptyBackup=false;
 async function doBackup(){
   const em=bkEmail();if(!em)return;
+  if(!S.playerLib.length&&!armEmptyBackup){
+    armEmptyBackup=true;
+    backupUI.msg='⚠ Your player library is EMPTY — this would replace your existing backup\'s players. Restore first if you lost them, or tap Back up again to continue anyway.';
+    render();return;
+  }
+  armEmptyBackup=false;
   backupUI.msg='Backing up…';render();
   try{
     syncLib();
