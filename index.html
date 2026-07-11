@@ -497,8 +497,9 @@ async function doBackup(){
   const em=bkEmail();if(!em)return;
   backupUI.msg='Backing up…';render();
   try{
-    const r=await relayBackup({op:'save',email:em,data:{me:S.me,playerLib:S.playerLib}});
-    backupUI.msg=r.ok?`✓ ${S.playerLib.length} player${S.playerLib.length===1?'':'s'} backed up to the Pi${r.emailed?' — confirmation emailed':''}.`:(r.error||'Backup failed.');
+    syncLib();
+    const r=await relayBackup({op:'save',email:em,data:{me:S.me,playerLib:S.playerLib,courses:S.courses}});
+    backupUI.msg=r.ok?`✓ ${S.playerLib.length} player${S.playerLib.length===1?'':'s'} + ${S.courses.length} course${S.courses.length===1?'':'s'} backed up to the Pi${r.emailed?' — confirmation emailed':''}.`:(r.error||'Backup failed.');
   }catch(e){backupUI.msg='Could not reach the Pi — check your connection.';}
   render();
 }
@@ -529,9 +530,16 @@ async function doRestore(){
           else{S.playerLib.push({id:e.id||('pl'+Date.now()+Math.floor(Math.random()*1e4)),name:e.name,index:e.index,teeName:e.teeName});added++;}
         });
         if(!S.me.name&&r.data.me&&r.data.me.name)S.me=r.data.me;
+        let cAdded=0;
+        (r.data.courses||[]).forEach(c=>{
+          if(!c||!c.id||!c.holes)return;
+          const i=S.courses.findIndex(x=>x.id===c.id);
+          if(i>=0)S.courses[i]=c;else{S.courses.push(c);cAdded++;}
+        });
+        backupUI._cAdded=cAdded;
       });
       backupUI.stage=0;
-      backupUI.msg=`✓ Restored — ${added} added, ${updated} updated.`;
+      backupUI.msg=`✓ Restored — ${added} player${added===1?'':'s'} added, ${updated} updated${backupUI._cAdded?`, ${backupUI._cAdded} course${backupUI._cAdded===1?'':'s'} added`:''}.`;
     }else backupUI.msg=r.error||'Restore failed.';
   }catch(e){backupUI.msg='Could not reach the Pi — check your connection.';}
   render();
@@ -1131,6 +1139,7 @@ function render(){
   if(scr==='home') html=vHome();
   else if(scr==='courses') html=vCourses();
   else if(scr==='players') html=vPlayers();
+  else if(scr==='rules') html=vRules();
   else if(scr==='course') html=vCourse();
   else if(scr==='setup') html=vSetup();
   else if(scr==='hole') html=vHole();
@@ -1218,6 +1227,7 @@ function vHome(){
   <div style="display:flex;gap:10px;margin-bottom:16px">
     <button class="ghost" style="flex:1;padding:12px" onclick="go('courses')">⛳ Courses</button>
     <button class="ghost" style="flex:1;padding:12px" onclick="go('players')">👥 Players</button>
+    <button class="ghost" style="flex:1;padding:12px" onclick="go('rules')">📜 Rules</button>
   </div>
   <div class="center" style="margin:2px 0 12px">
     <span class="seg" style="display:inline-flex;gap:6px">
@@ -1235,6 +1245,78 @@ function vHome(){
   </main>`;
 }
 function pickGame(g){set(()=>{S.config.game=g;S.screen='setup';});}
+function ruleCard(art,title,tag,body){
+  return `<details class="card" style="padding:12px 14px">
+    <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:12px">
+      ${art}<span style="flex:1;min-width:0"><b style="font-family:Rajdhani,sans-serif;font-size:22px">${title}</b>
+      <span class="tiny" style="display:block">${tag}</span></span><span style="color:var(--ink3)">▾</span></summary>
+    <div style="margin-top:10px;font-size:15px;line-height:1.55">${body}</div>
+  </details>`;
+}
+function vRules(){
+  const P=S.config.pts;
+  const img=(src,h)=>`<img src="${src}" style="height:${h||46}px;flex:none" onerror="this.style.display='none'">`;
+  const em=e=>`<span style="font-size:34px;flex:none">${e}</span>`;
+  const li=items=>`<ul style="margin:6px 0 0;padding-left:20px">${items.map(x=>`<li style="margin-bottom:6px">${x}</li>`).join('')}</ul>`;
+  return topbar('Rules','How each battle is fought','home')+`<main>
+  ${ruleCard(img('wolf.png',40),'Wolf','Rotating captain picks a partner — or goes alone',li([
+    '<b>Rotation:</b> the wolf rotates by tee order every hole and <b>hits first</b>. On the last two holes, last place is the wolf (house option).',
+    '<b>The pick:</b> after the drives, one tap picks a partner. Before anyone hits, the wolf may go <b>Lone</b> — or <b>Blind Lone</b> before even seeing the drives.',
+    `<b>Points:</b> wolf + partner win <b>${P.partnerWin}</b> each · field beats them <b>${P.fieldBeatsPartners}</b> each · lone wolf wins <b>${P.loneWin}</b> · field beats lone <b>${P.fieldBeatsLone}</b> each · blind wolf wins <b>${P.blindWin}</b> · field beats blind <b>${P.fieldBeatsBlind}</b> each.`,
+    `<b>CTP:</b> closest to pin on par 3s is worth <b>${P.ctp}</b> — ball must be on the green, no carryover.`,
+    'Ties push (optional carryover doubles the next decided hole). Best ball of each side decides the hole.']))}
+  ${ruleCard(img('nine.png',46),'9’s','Every hole is worth exactly 9 points',li([
+    '<b>Split:</b> best score takes <b>5</b>, middle <b>3</b>, worst <b>1</b> — with four players the worst gets <b>0</b>.',
+    '<b>Ties pool and split:</b> two tied for best share (5+3)/2 = 4 each; three-way ties split evenly.',
+    '<b>Blitz (option):</b> win the hole by 2+ strokes and sweep all 9.',
+    'Great with 3 players — it’s the classic threesome game (a.k.a. Nines / 5-3-1).']))}
+  ${ruleCard(img('vegas.png',46),'Vegas','2 v 2 — team digits duel',li([
+    '<b>The number:</b> each team pairs its two scores low-first — a 4 and a 5 make <b>45</b>. Scores above 9 count as 9.',
+    '<b>Winning:</b> low number takes the <b>difference</b> in points (45 vs 62 = 17), every winner books it.',
+    '<b>The flip:</b> a birdie flips the opponent’s number high-first — their 4-and-8 becomes <b>84</b>. Both teams birdie = no flip.',
+    '<b>Partner swap (option):</b> teams rotate twice during the round so everyone partners everyone.',
+    'Swings are huge — set the $ per point low.']))}
+  ${ruleCard(em('⛳'),'Stroke','Classic scoring — lowest total wins',li([
+    'Everyone plays their own ball; lowest total over the round wins. Works with 2, 3 or 4 players.',
+    'Settlement pays by <b>strokes of difference</b>.',
+    'Use the Standings tabs mid-round to see the same scores as Stableford, Match play, 9’s or Vegas.']))}
+  ${ruleCard(em('🏆'),'Best Ball','2 v 2 match play — best ball counts',li([
+    'Everyone plays their own ball; each hole, the <b>better ball of each team</b> goes head to head.',
+    'Win the hole, go 1 UP. Most holes up wins the match — clinch early and it ends “3&2” style.',
+    '<b>Dormie:</b> leading by exactly the holes remaining — the leader can’t lose.',
+    'Settlement pays by <b>holes of difference</b>.']))}
+  ${ruleCard(em('🤝'),'Scramble','One ball per team',li([
+    'Everyone tees off, the team picks the best shot, everyone plays from there — one score per team per hole.',
+    '<b>2 v 2:</b> the higher-handicap team gets net strokes via the <b>35% / 15%</b> two-player allowance.',
+    '<b>One team (all 4):</b> tournament mode — the app keeps the official card; net uses the <b>25/20/15/10%</b> allowance.',
+    'Lowest team total wins. In one-team mode there’s nothing to settle — hand the card to the committee.']))}
+  <div class="card" style="padding:12px 14px"><b style="font-family:Rajdhani,sans-serif;font-size:20px">Scoring options — every game</b>
+    <div style="font-size:15px;line-height:1.55;margin-top:6px">
+    <b>Net</b> gives strokes off the low man’s course handicap (dots on the score entry show where they land). <b>Gross</b> is raw. <b>Both</b> scores the round two ways at once.
+    All games ride the same scores — Standings tabs let you replay the round as any other game, and Settle always pays by the game you picked at the start.</div></div>
+  </main>`;
+}
+function backupBlockHTML(){
+  return `${backupUI.mode?`
+      <div class="tiny mt mb" style="border-top:1px solid var(--line);padding-top:10px">${backupUI.mode==='backup'?'Backs up players AND courses to the Pi — restore them on any phone later.':'Restore backed-up players and courses from the Pi.'}</div>
+      <input id="bkEmail" type="text" inputmode="email" autocapitalize="off" placeholder="you@email.com" value="${esc(localStorage.getItem('wolfBackupEmail')||'')}">
+      ${backupUI.mode==='backup'
+        ?`<div class="mt" style="display:flex;gap:6px">
+            <button class="ghost sel" style="flex:1" onclick="doBackup()">Back up now</button>
+            <button class="ghost" onclick="closeBackup()">Close</button></div>`
+        :backupUI.stage===0
+          ?`<div class="mt" style="display:flex;gap:6px">
+              <button class="ghost sel" style="flex:1" onclick="requestRestoreCode()">Email me a code</button>
+              <button class="ghost" onclick="closeBackup()">Close</button></div>`
+          :`<input id="bkCode" class="mt" type="text" inputmode="numeric" placeholder="6-digit code" maxlength="6" style="letter-spacing:5px;font-family:Rajdhani,sans-serif;font-size:20px;margin-top:8px">
+            <div class="mt" style="display:flex;gap:6px">
+              <button class="ghost sel" style="flex:1" onclick="doRestore()">Restore library</button>
+              <button class="ghost" onclick="closeBackup()">Close</button></div>`}
+      ${backupUI.msg?`<div class="tiny mt">${esc(backupUI.msg)}</div>`:''}`
+    :`<div class="mt" style="display:flex;gap:6px;border-top:1px solid var(--line);padding-top:12px">
+        <button class="ghost" onclick="openBackup()">☁ Back up</button>
+        <button class="ghost" onclick="openRestore()">Restore</button></div>`}`;
+}
 function vCourses(){
   return topbar('Courses','','home')+`<main>
   <div class="card"><h2>Course</h2>
@@ -1272,6 +1354,7 @@ function vCourses(){
       <div style="display:flex;gap:6px"><button class="ghost" onclick="addBlankCourse()">Start blank instead</button>
       <button class="ghost" onclick="cancelFind()">Dismiss</button></div>`:''}
     ${S.round.started?`<div class="tiny mt">Switching courses re-scores the round in progress against the new card.</div>`:''}
+    ${backupBlockHTML()}
   </div>
   </main>`;
 }
@@ -1328,25 +1411,7 @@ function vPlayers(){
         <button class="ghost danger" onclick="delPlayer('${e.id}')">✕</button>
       </span></div>`).join('')
     :'<div class="tiny">Golfers you set up in a round are saved here automatically.</div>';})()}
-    ${backupUI.mode?`
-      <div class="tiny mt mb" style="border-top:1px solid var(--line);padding-top:10px">${backupUI.mode==='backup'?'Back up this library to the Pi — restore it on any phone later.':'Restore a backed-up library from the Pi.'}</div>
-      <input id="bkEmail" type="text" inputmode="email" autocapitalize="off" placeholder="you@email.com" value="${esc(localStorage.getItem('wolfBackupEmail')||'')}">
-      ${backupUI.mode==='backup'
-        ?`<div class="mt" style="display:flex;gap:6px">
-            <button class="ghost sel" style="flex:1" onclick="doBackup()">Back up now</button>
-            <button class="ghost" onclick="closeBackup()">Close</button></div>`
-        :backupUI.stage===0
-          ?`<div class="mt" style="display:flex;gap:6px">
-              <button class="ghost sel" style="flex:1" onclick="requestRestoreCode()">Email me a code</button>
-              <button class="ghost" onclick="closeBackup()">Close</button></div>`
-          :`<input id="bkCode" class="mt" type="text" inputmode="numeric" placeholder="6-digit code" maxlength="6" style="letter-spacing:5px;font-family:Rajdhani,sans-serif;font-size:20px;margin-top:8px">
-            <div class="mt" style="display:flex;gap:6px">
-              <button class="ghost sel" style="flex:1" onclick="doRestore()">Restore library</button>
-              <button class="ghost" onclick="closeBackup()">Close</button></div>`}
-      ${backupUI.msg?`<div class="tiny mt">${esc(backupUI.msg)}</div>`:''}`
-    :`<div class="mt" style="display:flex;gap:6px;border-top:1px solid var(--line);padding-top:12px">
-        <button class="ghost" onclick="openBackup()">☁ Back up</button>
-        <button class="ghost" onclick="openRestore()">Restore</button></div>`}
+    ${backupBlockHTML()}
   </div>
   </main>`;
 }
