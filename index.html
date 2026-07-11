@@ -183,6 +183,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
+const BUILD='1783748536';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -424,6 +425,23 @@ let lobbySock=null,invites=[],nearby=[],nbShown=[];
 // actions (iOS web apps re-prompt daily; ask only when it makes sense).
 let myCoords=(()=>{try{const v=JSON.parse(localStorage.getItem('wolfLastCoords'));return (v&&v.c)||null;}catch(e){return null;}})();
 function cacheCoords(c){myCoords=c;try{localStorage.setItem('wolfLastCoords',JSON.stringify({c,ts:Date.now()}));}catch(e){}}
+// Usage telemetry: tiny fire-and-forget events to the relay (buffered offline).
+function stat(ev,extra){
+  const e=Object.assign({t:'stat',ev,dev:devId(),who:(S.me&&S.me.name)||'',build:BUILD,at:Date.now()},extra||{});
+  try{
+    if(lobbySock&&lobbySock.readyState===1){lobbySock.send(JSON.stringify(e));return;}
+    const q=JSON.parse(localStorage.getItem('btStatQ')||'[]');
+    q.push(e);localStorage.setItem('btStatQ',JSON.stringify(q.slice(-50)));
+  }catch(x){}
+}
+function statFlush(){
+  try{
+    const q=JSON.parse(localStorage.getItem('btStatQ')||'[]');
+    if(!q.length||!lobbySock||lobbySock.readyState!==1)return;
+    q.forEach(e=>lobbySock.send(JSON.stringify(e)));
+    localStorage.removeItem('btStatQ');
+  }catch(x){}
+}
 function devId(){let d=localStorage.getItem('wolfDevId');if(!d){d='d'+Math.random().toString(36).slice(2,10);localStorage.setItem('wolfDevId',d);}return d;}
 function kmBetween(a,b,c,d){const R=6371,dl=(c-a)*Math.PI/180,dn=(d-b)*Math.PI/180;const x=Math.sin(dl/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
 function sendHello(){
@@ -594,7 +612,7 @@ function addManualPlayer(){
 function lobbyConnect(){
   if((S.share&&S.share.on)||lobbySock)return;
   try{lobbySock=new WebSocket(RELAY);}catch(e){lobbySock=null;setTimeout(lobbyConnect,10000);return;}
-  lobbySock.onopen=()=>{try{lobbySock.send('{"t":"lobby"}');}catch(e){}sendHello();};
+  lobbySock.onopen=()=>{try{lobbySock.send('{"t":"lobby"}');}catch(e){}sendHello();statFlush();};
   lobbySock.onmessage=ev=>{
     let m;try{m=JSON.parse(ev.data);}catch(e){return;}
     if(m.t==='invites'){invites=m.list||[];render();}
@@ -1819,6 +1837,12 @@ function startRound(){
     S.round.span=clone(S.config.span||{count:18,start:0});S.round.startedAt=Date.now();
     S.round.cur=playOrder()[0];S.screen='hole';
     if(S.config.game!=='wolf')prefillNines(S.round.cur);});
+  stat('round_start',{game:S.round.game,course:S.course.name,holes:S.round.span.count,firstTee:S.round.span.start+1,
+    lens:S.config.lens,players:NP(),shared:!!S.share.on,
+    opts:S.round.game==='nines'?{n:S.config.nines.n,blitz:S.config.nines.blitz,ctp:S.config.nines.ctp}
+      :S.round.game==='vegas'?{rotate:S.config.vegas.rotate,flip:S.config.vegas.flip,ctp:S.config.vegas.ctp}
+      :S.round.game==='scramble'?{teams:S.config.scramble.teams}
+      :S.round.game==='wolf'?{carry:S.config.carryTies,last2:S.config.last2LastPlace}:{}});
   if(withNearby&&!S.share.on)shareRound();
 }
 function prefillNines(h){
@@ -1946,7 +1970,12 @@ function advanceToNext(){
   const cur=Math.max(0,o.indexOf(S.round.cur));
   let next=-1;
   for(let k=1;k<=o.length;k++){const cand=o[(cur+k)%o.length];if(!S.round.holes[cand].confirmed){next=cand;break;}}
-  if(next===-1){S.screen='settle';}else{S.round.cur=next;if(gameOn()!=='wolf')prefillNines(next);}
+  if(next===-1){
+    S.screen='settle';
+    if(!S.round._statFin){S.round._statFin=true;
+      stat('round_finish',{game:S.round.game,thru:S.round.holes.filter(r=>r.confirmed).length,
+        mins:S.round.startedAt?Math.round((Date.now()-S.round.startedAt)/60000):null});}
+  }else{S.round.cur=next;if(gameOn()!=='wolf')prefillNines(next);}
 }
 function confirmHole(){set(()=>{S.round.holes[S.round.cur].confirmed=true;advanceToNext();});}
 function unconfirm(){set(()=>{S.round.holes[S.round.cur].confirmed=false;});}
@@ -2435,6 +2464,7 @@ const ART={};
 });
 function art(f){return ART[f]||f;}
 setInterval(()=>{if(S.round.started&&S.round.startedAt&&(S.screen==='hole'||S.screen==='standings'))render();},60000);
+stat('open',{ua:(navigator.userAgent.match(/iPhone OS [0-9_]+|Android [0-9.]+/)||[''])[0]});
 applyTheme();
 render();
 if(S.share&&S.share.on){primeCaches(false);syncConnect();}
