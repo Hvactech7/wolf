@@ -209,6 +209,7 @@ function defaultConfig(){
     nines:{n:4,blitz:false,ctp:true},
     vegas:{pairing:0,rotate:'none',flip:true,ctp:false},
     stroke:{n:4},
+    scramble:{teams:'2v2'},
     span:{count:18,start:0},
     track:{bunker:false,chips:false,pen:false},
   };
@@ -243,6 +244,7 @@ function load(){
       if(!s.config.nines)s.config.nines={n:4,blitz:false,ctp:true};
       if(!s.config.vegas)s.config.vegas={pairing:0,rotate:'none',flip:true,ctp:false};
       if(!s.config.stroke)s.config.stroke={n:4};
+      if(!s.config.scramble)s.config.scramble={teams:'2v2'};
       if(!s.config.span)s.config.span={count:18,start:0};
       if(!s.round.span)s.round.span={count:18,start:0};
       if((s.config._v||2)<3){
@@ -831,15 +833,23 @@ function computeBestBall(){
 }
 // Scramble (2v2): one ball per team. Net uses the USGA two-player scramble
 // allowance — 35% of the low course handicap + 15% of the high.
+function scrambleTeams(){
+  return (S.config.scramble&&S.config.scramble.teams==='solo')?[[0,1,2,3]]:matchTeams();
+}
 function scrambleStrokes(){
-  const T=matchTeams(),ch=courseHandicaps();
+  const T=scrambleTeams(),ch=courseHandicaps();
+  if(T.length===1){
+    // one team of four: USGA 25/20/15/10% of the sorted course handicaps, absolute
+    const c=T[0].map(i=>ch[i]).sort((a,b)=>a-b);
+    return [Math.max(0,Math.round((0.25*c[0]+0.20*c[1]+0.15*c[2]+0.10*c[3])*S.config.allowance/100))];
+  }
   const tch=T.map(t=>{const a=ch[t[0]],b=ch[t[1]];return Math.round((0.35*Math.min(a,b)+0.15*Math.max(a,b))*S.config.allowance/100);});
   const m=Math.min(...tch);
   return tch.map(c=>Math.max(0,c-m));
 }
 function scrambleDots(k,h){const st=scrambleStrokes()[k],si=S.course.holes[h].si;return (st>=si?1:0)+((st-18)>=si?1:0);}
 function computeScramble(){
-  const T=matchTeams(),capt=[T[0][0],T[1][0]];
+  const T=scrambleTeams(),capt=T.map(t=>t[0]);
   const ledgers={net:[0,0,0,0],gross:[0,0,0,0]},par={net:[0,0,0,0],gross:[0,0,0,0]};
   for(const h of playOrder()){
     const rec=S.round.holes[h];if(!rec.confirmed)continue;
@@ -1145,7 +1155,7 @@ function vHome(){
     ${S.share.on?`<div class="row mt" style="border-top:1px solid var(--line)">
         <span class="tiny">Live sync · <b class="num" style="font-size:16px;letter-spacing:2px">${esc(S.share.code)}</b> ${sockOpen?'<span style="color:var(--elec)">● connected</span>':'<span style="color:var(--red)">○ reconnecting…</span>'}</span>
         <button class="ghost danger" onclick="leaveShare()">Leave</button></div>`
-      :`<button class="ghost mt" style="width:100%" onclick="shareRound()">Share this round with other phones</button>`}
+      :`<button class="ghost mt" style="width:100%" onclick="shareRound()">📍 Invite nearby players</button>`}
   </div>`:''}
   <div class="card"><h2>Pick your game</h2>
     <button class="gamebtn" onclick="pickGame('wolf')">
@@ -1579,9 +1589,14 @@ function vSetup(){
   return topbar(`Round setup — ${gameName(S.config.game)}`,nines?'Every hole is worth 9 points: 5 · 3 · 1':vegas?'Low team number takes the difference':stroke?'Straight scoring — net, gross or both':bestball?'2 v 2 — better ball wins the hole':scramble?'2 v 2 — one ball per team':'Order = tee order on hole 1 (wolf rotation)','home')+`<main>
   ${rows}
   ${(bestball||scramble)?`<div class="card"><h2>Teams</h2>
-    ${[[[0,1],[2,3]],[[0,2],[1,3]],[[0,3],[1,2]]].map((T,pi)=>`
+    ${scramble?`<div class="row" style="border-top:none"><span class="muted">Format</span>
+      <span class="seg" style="display:inline-flex;gap:6px">
+        <button class="ghost ${S.config.scramble.teams!=='solo'?'sel':''}" onclick="set(()=>S.config.scramble.teams='2v2')">2 v 2</button>
+        <button class="ghost ${S.config.scramble.teams==='solo'?'sel':''}" onclick="set(()=>S.config.scramble.teams='solo')">One team — all 4</button>
+      </span></div>`:''}
+    ${(scramble&&S.config.scramble.teams==='solo')?'':[[[0,1],[2,3]],[[0,2],[1,3]],[[0,3],[1,2]]].map((T,pi)=>`
       <button class="ghost ${S.config.vegas.pairing===pi?'sel':''}" style="width:100%;text-align:left;margin-bottom:8px" onclick="set(()=>S.config.vegas.pairing=${pi})">${pairLbl(T)}</button>`).join('')}
-    <div class="tiny mt">${scramble?'One ball per team — pick your partners. Net strokes use the 35%/15% scramble allowance.':'Better ball of each team wins the hole.'}</div>
+    <div class="tiny mt">${scramble?(S.config.scramble.teams==='solo'?'Tournament mode — the whole group plays one ball and the app keeps the card. Net uses the 25/20/15/10% four-player allowance.':'One ball per team — pick your partners. Net strokes use the 35%/15% scramble allowance.'):'Better ball of each team wins the hole.'}</div>
   </div>`:''}
   ${vegas?`<div class="card"><h2>Teams</h2>
     ${[[[0,1],[2,3]],[[0,2],[1,3]],[[0,3],[1,2]]].map((T,pi)=>`
@@ -1626,7 +1641,7 @@ function vSetup(){
       </select></div>
     <div class="tiny mt">Start from any tee — play wraps around${S.config.span.count===9?' within the nine':''}. The clock starts when the round does.</div>
   </div>
-  <div class="card"><h2>Scoring lens</h2>
+  <div class="card"><h2>Scoring options</h2>
     <div class="seg">
       ${['gross','net','both'].map(L=>`<button class="ghost ${S.config.lens===L?'sel':''}" onclick="set(()=>S.config.lens='${L}')">${L[0].toUpperCase()+L.slice(1)}</button>`).join('')}
     </div>
@@ -1707,7 +1722,7 @@ function startRound(){
 function prefillNines(h){
   const par=S.course.holes[h].par,r=S.round.holes[h];
   if(gameOn()==='scramble'){
-    const capt=matchTeams().map(t=>t[0]);
+    const capt=scrambleTeams().map(t=>t[0]);
     r.gross=r.gross.map((g,i)=>(capt.includes(i)&&g==null)?par:g);
     return;
   }
@@ -1823,15 +1838,16 @@ function redoPick(){set(()=>{const r=S.round.holes[S.round.cur];r.mode=null;r.pa
 function chScore(i,d){set(()=>{const r=S.round.holes[S.round.cur];const v=(r.gross[i]??S.course.holes[S.round.cur].par)+d;r.gross[i]=Math.min(15,Math.max(1,v));});}
 function setCtp(i){set(()=>{S.round.holes[S.round.cur].ctp=i;});}
 function chStat(k,i,d){set(()=>{const a=statArr(S.round.holes[S.round.cur],k);a[i]=Math.max(0,a[i]+d);});}
-function confirmHole(){set(()=>{S.round.holes[S.round.cur].confirmed=true;});}
-function unconfirm(){set(()=>{S.round.holes[S.round.cur].confirmed=false;});}
-function nextHole(){set(()=>{
+function advanceToNext(){
   const o=playOrder();
   const cur=Math.max(0,o.indexOf(S.round.cur));
   let next=-1;
   for(let k=1;k<=o.length;k++){const cand=o[(cur+k)%o.length];if(!S.round.holes[cand].confirmed){next=cand;break;}}
   if(next===-1){S.screen='settle';}else{S.round.cur=next;if(gameOn()!=='wolf')prefillNines(next);}
-});}
+}
+function confirmHole(){set(()=>{S.round.holes[S.round.cur].confirmed=true;advanceToNext();});}
+function unconfirm(){set(()=>{S.round.holes[S.round.cur].confirmed=false;});}
+function nextHole(){set(()=>{advanceToNext();});}
 
 // ----- 9's hole screen: no pick phase — just scores, ranked into 5·3·1 -----
 function vHoleNines(){
@@ -1970,12 +1986,12 @@ function vHoleVegas(){
 
 function vHoleScramble(){
   const h=S.round.cur, hole=S.course.holes[h], rec=S.round.holes[h];
-  const T=matchTeams(), capt=[T[0][0],T[1][0]];
+  const T=scrambleTeams(), capt=T.map(t=>t[0]);
   const holeNav=holeNavHTML();
   const rows=T.map((t,k)=>{
     const g=rec.gross[capt[k]], d=scrambleDots(k,h);
     return `<div class="scorebar">
-      <div style="min-width:140px"><b>${esc(S.players[t[0]].name)} &amp; ${esc(S.players[t[1]].name)}</b>
+      <div style="min-width:140px"><b>${t.map(i=>esc(S.players[i].name)).join(' &amp; ')}</b>
         <div class="tiny">${d>0?`<span class="dots">${'●'.repeat(d)}</span>`:''} ${g!=null&&S.config.lens!=='gross'?`net ${g-d}`:''}</div></div>
       <div class="stepper">
         <button onclick="chScore(${capt[k]},-1)">−</button>
@@ -1987,7 +2003,7 @@ function vHoleScramble(){
   return topbar(`Hole ${h+1}`,`Par ${hole.par} · SI ${hole.si} · ${esc(S.course.name)}${S.share.on?` · ${esc(S.share.code)} ${sockOpen?'●':'○'}`:''}`,'')+`<main>
     ${holeNav}
     <div class="card">
-      <div class="tiny mb">One score per team — everyone plays from the best shot.</div>
+      <div class="tiny mb">${T.length===1?'One ball for the whole group — the official tournament card.':'One score per team — everyone plays from the best shot.'}</div>
       ${capt.some(i=>rec.gross[i]==null)?`<button class="ghost mb" style="width:100%" onclick="set(()=>prefillNines(${h}))">Both teams to par ${hole.par} — adjust from there</button>`:''}
       ${rows}
     </div>
@@ -2016,7 +2032,7 @@ function scorecardHTML(){
     +idx.slice(9).map(i=>`<th>${i+1}</th>`).join('')+'<th>IN</th><th>TOT</th></tr>';
   html+='<tr class="parrow"><td class="nm">Par</td>'+hs.slice(0,9).map(h=>`<td>${h.par}</td>`).join('')
     +`<td>${parOut}</td>`+hs.slice(9).map(h=>`<td>${h.par}</td>`).join('')+`<td>${parIn}</td><td>${parOut+parIn}</td></tr>`;
-  const rowDefs=gameOn()==='scramble'?matchTeams().map(t=>({name:S.players[t[0]].name+' & '+S.players[t[1]].name,pi:t[0]})):S.players.slice(0,NP()).map((p,pi)=>({name:p.name,pi}));
+  const rowDefs=gameOn()==='scramble'?scrambleTeams().map(t=>({name:t.map(i=>S.players[i].name).join(' & '),pi:t[0]})):S.players.slice(0,NP()).map((p,pi)=>({name:p.name,pi}));
   rowDefs.forEach(({name:rowName,pi})=>{
     const g=i=>S.round.holes[i].confirmed?S.round.holes[i].gross[pi]:null;
     const sum=(a,b)=>{let s=0,n=0;for(let i=a;i<b;i++){const v=g(i);if(v!=null){s+=v;n++;}}return n?s:null;};
@@ -2044,7 +2060,7 @@ function scorecard9HTML(base){
   let html='<div class="sc-wrap"><table class="sc"><tr><th class="nm">Hole</th>'
     +idx.map(i=>`<th>${i+1}</th>`).join('')+'<th>TOT</th></tr>';
   html+='<tr class="parrow"><td class="nm">Par</td>'+idx.map(i=>`<td>${hs[i].par}</td>`).join('')+`<td>${parTot}</td></tr>`;
-  const rowDefs=gameOn()==='scramble'?matchTeams().map(t=>({name:S.players[t[0]].name+' & '+S.players[t[1]].name,pi:t[0]})):S.players.slice(0,NP()).map((p,pi)=>({name:p.name,pi}));
+  const rowDefs=gameOn()==='scramble'?scrambleTeams().map(t=>({name:t.map(i=>S.players[i].name).join(' & '),pi:t[0]})):S.players.slice(0,NP()).map((p,pi)=>({name:p.name,pi}));
   rowDefs.forEach(({name:rowName,pi})=>{
     const g=i=>S.round.holes[i].confirmed?S.round.holes[i].gross[pi]:null;
     const played=idx.filter(i=>g(i)!=null);
@@ -2134,15 +2150,15 @@ function vStandings(){
   };
   let all=null,tables='';
   if(view===g&&g==='scramble'){
-    const sc=computeScramble();const T=matchTeams();
+    const sc=computeScramble();const T=scrambleTeams();
     const rows=T.slice().sort((a,b)=>sc.ledgers[prim][a[0]]-sc.ledgers[prim][b[0]]);
     tables=`<div class="card"><h2>Scramble · thru ${thru}</h2>
       <table class="st"><tr><th>Team</th>${cols.map(L=>`<th class="r">${lbl(L)}</th>`).join('')}</tr>
-      ${rows.map(t=>`<tr><td>${esc(S.players[t[0]].name)} &amp; ${esc(S.players[t[1]].name)}</td>${cols.map(L=>{
+      ${rows.map(t=>`<tr><td>${t.map(i=>esc(S.players[i].name)).join(' &amp; ')}</td>${cols.map(L=>{
         const vv=sc.ledgers[L][t[0]],d=vv-sc.par[L][t[0]];
         return `<td class="r num" style="font-size:27px;${L!==prim&&cols.length>1?'color:var(--ink2);font-size:20px':''}">${thru?`${vv} <span style="font-size:13px">${d===0?'E':(d>0?'+':'')+d}</span>`:'–'}</td>`;}).join('')}</tr>`).join('')}
-      </table>${teamPickerRow()}
-      <div class="tiny mt">One ball per team — lowest total wins. Net gives the higher-handicap team strokes via the 35%/15% scramble allowance.</div></div>`;
+      </table>${T.length===1?'':teamPickerRow()}
+      <div class="tiny mt">${T.length===1?'Tournament tracker — one ball, whole group. Net plays off the 25/20/15/10% four-player allowance ('+scrambleStrokes()[0]+' strokes).':'One ball per team — lowest total wins. Net gives the higher-handicap team strokes via the 35%/15% scramble allowance.'}</div></div>`;
   }else if(view===g&&g==='bestball'){
     const bb=computeBestBall();
     const blocks=cols.map(L=>{
@@ -2241,6 +2257,20 @@ function jumpAndGo(h){set(()=>{S.round.cur=h;S.screen='hole';});}
 
 // ----- settlement -----
 function vSettle(){
+  if(gameOn()==='scramble'&&scrambleTeams().length===1){
+    const sc=computeScramble();
+    const thru=S.round.holes.filter(r=>r.confirmed).length;
+    const blocks=activeLenses().map(L=>{
+      const tot=sc.ledgers[L][0],d=tot-sc.par[L][0];
+      return `<div class="card"><h2>${L==='net'?'Net':'Gross'} team score · thru ${thru}</h2>
+        <div class="center mb"><span class="bigscore num">${thru?tot:'–'}</span>
+        <div class="muted">${thru?(d===0?'even par':(d>0?'+':'')+d+' to par'):'no holes confirmed yet'}</div></div></div>`;
+    }).join('');
+    return topbar('Team card','','')+`<main>${blocks}
+      <div class="card tiny">Tournament tracker — one team, nothing to settle. Hand this card to the committee.</div>
+      <button class="big warn" onclick="newRound()">${armNewRound?'Tap again to clear this round':'Start a new round'}</button>
+    </main>`+tabs('settle');
+  }
   const all=computeGame();
   const thru=S.round.holes.filter(r=>r.confirmed).length;
   const v=+S.round.dollarPerPt||0;
