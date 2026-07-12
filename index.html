@@ -188,7 +188,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1783838498';
+const BUILD='1783839471';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -774,23 +774,38 @@ function runningTotalsCard(){
   const thru=S.round.holes.filter(r=>r.confirmed).length;
   if(!thru)return '';
   const L=topLens==='net'?'net':'gross';
-  const fmt=(v,p)=>{const d=v-p;
+  const g=gameOn();
+  const first=i=>esc((S.players[i].name||'').split(' ')[0]);
+  const cell=(label,html)=>`<div style="text-align:center;flex:1;min-width:60px"><div style="font-size:14px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px">${label}</div>${html}</div>`;
+  const big=v=>`<div class="num" style="font-size:32px;font-weight:700;line-height:1.05">${v}</div>`;
+  const strokesFmt=(v,p)=>{const d=v-p;
     const col=d<0?'#7fd49a':d>0?'var(--amber-bd)':'var(--ink2)';
-    return `<div class="num" style="font-size:32px;font-weight:700;line-height:1.05">${v}</div>
-      <div class="num" style="font-size:22px;font-weight:700;color:${col}">${d===0?'E':(d>0?'+':'')+d}</div>`;};
-  let cells;
-  if(gameOn()==='scramble'){
+    return big(v)+`<div class="num" style="font-size:22px;font-weight:700;color:${col}">${d===0?'E':(d>0?'+':'')+d}</div>`;};
+  let cells='',foot='';
+  if(g==='scramble'){
     const sc=computeScramble(),T=scrambleTeams();
-    cells=T.map(t=>`<div style="text-align:center;flex:1;min-width:70px"><div style="font-size:14px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px">${t.map(i=>esc((S.players[i].name||'').split(' ')[0])).join(' & ')}</div>${fmt(sc.ledgers[L][t[0]],sc.par[L][t[0]])}</div>`).join('');
-  }else{
+    cells=T.map(t=>cell(t.map(first).join(' & '),strokesFmt(sc.ledgers[L][t[0]],sc.par[L][t[0]]))).join('');
+  }else if(g==='stroke'){
     const st=computeStroke();
-    cells=actIdx().map(i=>`<div style="text-align:center;flex:1;min-width:60px"><div style="font-size:14px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px">${esc((S.players[i].name||'').split(' ')[0])}</div>${fmt(st.ledgers[L][i],st.par[L][i])}</div>`).join('');
+    cells=actIdx().map(i=>cell(first(i),strokesFmt(st.ledgers[L][i],st.par[L][i]))).join('');
+  }else if(g==='bestball'){
+    const bb=computeBestBall(),m=computeMatch(L),T=m.T;
+    cells=T.map(t=>cell(t.map(first).join(' & ')+' — holes',big(bb.ledgers[L][t[0]]))).join('');
+    foot=m.clinch?`${m.clinch.team===0?T[0].map(first).join(' & '):T[1].map(first).join(' & ')} win ${m.clinch.margin}${m.clinch.left?'&'+m.clinch.left:' UP'}`
+      :m.up===0?'All square'
+      :`${(m.up>0?T[0]:T[1]).map(first).join(' & ')} ${Math.abs(m.up)} UP${Math.abs(m.up)===m.count-m.thru?' — dormie':''}`;
+  }else{
+    // points games: wolf, 9's, vegas, stableford
+    const eng=g==='nines'?computeNines():g==='vegas'?computeVegas():g==='stableford'?computeStableford():computeAll();
+    const f=g==='nines'?fmtPts:String;
+    cells=actIdx().map(i=>cell(first(i),big(f(eng.ledgers[L][i])))).join('');
+    foot=g==='nines'||g==='stableford'||g==='vegas'||g==='wolf'?'points':'';
   }
   return `<div class="card" style="padding:14px 12px 10px"><div style="display:flex;gap:4px">${cells}</div>
     <div style="display:flex;justify-content:center;align-items:center;gap:8px;margin-top:7px">
       <button class="ghost ${L==='gross'?'sel':''}" style="padding:3px 14px;font-size:13px" onclick="setTopLens('gross')">Gross</button>
       <button class="ghost ${L==='net'?'sel':''}" style="padding:3px 14px;font-size:13px" onclick="setTopLens('net')">Net</button>
-      <span class="tiny">thru ${thru}</span>
+      <span class="tiny">${foot?foot+' · ':''}thru ${thru}</span>
     </div></div>`;
 }
 function holeNavHTML(){
