@@ -123,6 +123,9 @@
   .teambox .vnum{font-family:Rajdhani,Inter,sans-serif;font-weight:700;font-size:30px;line-height:1;color:#2ea043}
   .teambox.flipped .vnum{color:var(--red)}
   .gamebtn.strokeg{background:rgba(201,162,39,.10);border-color:var(--green);box-shadow:3px 3px 0 #8a6f1c}
+  .gamebtn.stblg{background:rgba(201,79,124,.12);border-color:#c94f7c;box-shadow:3px 3px 0 #7c2f4c}
+  .gamebtn.stblg:active{box-shadow:1px 1px 0 #7c2f4c}
+  .stbl-ph{font-size:38px;margin:0 16px 0 0;flex:none}
   .gamebtn.bbg{background:rgba(42,167,160,.12);border-color:#2aa7a0;box-shadow:3px 3px 0 #17615d}
   .gamebtn.bbg:active{box-shadow:1px 1px 0 #17615d}
   .gamebtn.scrg{background:rgba(142,92,217,.12);border-color:#8e5cd9;box-shadow:3px 3px 0 #55357f}
@@ -185,7 +188,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1783836082';
+const BUILD='1783837348';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -212,6 +215,7 @@ function defaultConfig(){
     nines:{n:4,blitz:false,ctp:true},
     vegas:{pairing:0,rotate:'none',flip:true,ctp:false},
     stroke:{n:4},
+    stbl:{n:4,pts:{alba:5,eagle:4,birdie:3,par:2,bogey:1,dbl:0}},
     scramble:{teams:'2v2'},
     span:{count:18,start:0},
     track:{putts:false,bunker:false,chips:false,pen:false},
@@ -247,6 +251,7 @@ function load(){
       if(!s.config.nines)s.config.nines={n:4,blitz:false,ctp:true};
       if(!s.config.vegas)s.config.vegas={pairing:0,rotate:'none',flip:true,ctp:false};
       if(!s.config.stroke)s.config.stroke={n:4};
+      if(!s.config.stbl)s.config.stbl={n:4,pts:{alba:5,eagle:4,birdie:3,par:2,bogey:1,dbl:0}};
       if(!s.config.scramble)s.config.scramble={teams:'2v2'};
       if(!s.history)s.history=[];
       if(!s.config.span)s.config.span={count:18,start:0};
@@ -727,11 +732,12 @@ function gameOn(){
   const roundScr=['hole','standings','settle','map'].includes(S.screen);
   return (roundScr&&S.round.started&&S.round.game)||S.config.game||'wolf';
 }
-function gameName(g){const x=g||gameOn();return x==='nines'?'9’s':x==='vegas'?'Vegas':x==='stroke'?'Stroke':x==='bestball'?'Best Ball':x==='scramble'?'Scramble':'Wolf';}
+function gameName(g){const x=g||gameOn();return x==='nines'?'9’s':x==='vegas'?'Vegas':x==='stroke'?'Stroke':x==='bestball'?'Best Ball':x==='scramble'?'Scramble':x==='stableford'?'Stableford':'Wolf';}
 function NP(){
   const g=gameOn();
   if(g==='nines'&&S.config.nines&&S.config.nines.n===3)return 3;
   if(g==='stroke'&&S.config.stroke)return Math.min(4,Math.max(1,S.config.stroke.n||4));
+  if(g==='stableford'&&S.config.stbl)return Math.min(4,Math.max(1,S.config.stbl.n||4));
   return 4;
 }
 function actIdx(){return [0,1,2,3].slice(0,NP());}
@@ -991,6 +997,7 @@ function computeScramble(){
   return {ledgers,par,perHole:null,carries:{net:0,gross:0},lenses:['net','gross']};
 }
 function computeGame(){const g=gameOn();
+  if(g==='stableford')return Object.assign({perHole:null,carries:{net:0,gross:0},lenses:['net','gross']},computeStableford());
   if(g==='bestball')return computeBestBall();
   if(g==='scramble')return computeScramble();
   if(g==='stroke')return Object.assign({perHole:null,carries:{net:0,gross:0},lenses:['net','gross']},computeStroke());
@@ -1319,6 +1326,11 @@ function vHome(){
         <div class="tiny">One Ball Per Team</div></div>
       <span class="scr-ph">🤝</span>
     </button>
+    <button class="gamebtn stblg" onclick="pickGame('stableford')">
+      <div style="flex:1;min-width:0"><span class="gname">Stableford</span>
+        <div class="tiny">Points for your score vs par — highest wins</div></div>
+      <span class="stbl-ph">🎯</span>
+    </button>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
     <button class="ghost" style="padding:12px" onclick="go('courses')">⛳ Courses</button>
@@ -1408,6 +1420,10 @@ function vRules(){
     '<b>2 v 2:</b> the higher-handicap team gets net strokes via the <b>35% / 15%</b> two-player allowance.',
     '<b>One team (all 4):</b> tournament mode — the app keeps the official card; net uses the <b>25/20/15/10%</b> allowance.',
     'Lowest team total wins. In one-team mode there’s nothing to settle — hand the card to the committee.']))}
+  ${(()=>{const P=stblPts();return ruleCard(em('🎯'),'Stableford','Points for your score vs par',li([
+    `<b>Points per hole:</b> albatross <b>${P.alba}</b> · eagle <b>${P.eagle}</b> · birdie <b>${P.birdie}</b> · par <b>${P.par}</b> · bogey <b>${P.bogey}</b> · double or worse <b>${P.dbl}</b> — all adjustable in setup.`,
+    'Highest total wins. Blow-up holes stop hurting after double — pick up and move on.',
+    'Works with 1–4 players; net plays off your full course handicap.']));})()}
   <div class="card" style="padding:12px 14px"><b style="font-family:Rajdhani,sans-serif;font-size:20px">Scoring options — every game</b>
     <div style="font-size:15px;line-height:1.55;margin-top:6px">
     <b>Net</b> scores (totals, Stroke play, Stableford) apply each player’s <b>full course handicap</b>. Inside the games, points play off strokes <b>relative to the low man</b> — the dots on the score entry show where those game strokes land. <b>Gross</b> is raw. <b>Both</b> shows two columns.
@@ -1818,6 +1834,7 @@ function vSetup(){
   const nines=S.config.game==='nines';
   const vegas=S.config.game==='vegas';
   const stroke=S.config.game==='stroke';
+  const stbl=S.config.game==='stableford';
   const bestball=S.config.game==='bestball';
   const scramble=S.config.game==='scramble';
   const rows=actIdx().map(i=>{
@@ -1846,7 +1863,7 @@ function vSetup(){
     <div class="stepper"><button onclick="chPt('${k}',-1)">−</button><span class="val num">${P[k]}</span><button onclick="chPt('${k}',1)">+</button></div></div>`;
   const V=S.config.vegas;
   const pairLbl=T=>`${esc(S.players[T[0][0]].name)} &amp; ${esc(S.players[T[0][1]].name)} <span class="muted">vs</span> ${esc(S.players[T[1][0]].name)} &amp; ${esc(S.players[T[1][1]].name)}`;
-  return topbar(`Round setup — ${gameName(S.config.game)}`,nines?'Every hole is worth 9 points: 5 · 3 · 1':vegas?'Low team number takes the difference':stroke?'Straight scoring — net, gross or both':bestball?'2 v 2 — better ball wins the hole':scramble?'2 v 2 — one ball per team':'Order = tee order on hole 1 (wolf rotation)','home')+`<main>
+  return topbar(`Round setup — ${gameName(S.config.game)}`,nines?'Every hole is worth 9 points: 5 · 3 · 1':vegas?'Low team number takes the difference':stroke?'Straight scoring — net, gross or both':stbl?'Points vs par — highest total wins':bestball?'2 v 2 — better ball wins the hole':scramble?'2 v 2 — one ball per team':'Order = tee order on hole 1 (wolf rotation)','home')+`<main>
   ${rows}
   ${(bestball||scramble)?`<div class="card"><h2>Teams</h2>
     ${scramble?`<div class="row" style="border-top:none"><span class="muted">Format</span>
@@ -1868,6 +1885,16 @@ function vSetup(){
     <div class="row"><span class="muted">Closest to pin +1 (par 3s)</span>
       <button class="ghost ${V.ctp?'sel':''}" onclick="set(()=>S.config.vegas.ctp=!S.config.vegas.ctp)">${V.ctp?'On':'Off'}</button></div>
     <div class="tiny mt">Your two scores pair low-first into a number (4 &amp; 5 → 45); low team number wins the difference in points, every player on the winning side books it. Both teams birdie = no flip. Scores above 9 count as 9.</div>
+  </div>`:''}
+  ${stbl?`<div class="card"><h2>Stableford</h2>
+    <div class="row"><span class="muted">Players in the round</span>
+      <span class="seg" style="display:inline-flex;gap:6px">
+        ${[1,2,3,4].map(n=>`<button class="ghost ${NP()===n?'sel':''}" onclick="set(()=>S.config.stbl.n=${n})">${n}</button>`).join('')}
+      </span></div>
+    ${[['birdie','Birdie'],['par','Par'],['bogey','Bogey'],['dbl','Double bogey or worse'],['eagle','Eagle'],['alba','Albatross']].map(([k,l])=>`
+      <div class="row"><span class="muted">${l}</span>
+        <div class="stepper"><button onclick="chStblPt('${k}',-1)">−</button><span class="val num">${S.config.stbl.pts[k]}</span><button onclick="chStblPt('${k}',1)">+</button></div></div>`).join('')}
+    <div class="tiny mt">Points for each score vs par — net uses your full course handicap. Highest total wins. Negative values allowed for modified Stableford.</div>
   </div>`:''}
   ${stroke?`<div class="card"><h2>Stroke play</h2>
     <div class="row"><span class="muted">Players in the round</span>
@@ -1968,6 +1995,7 @@ function setPl(i,k,v){set(()=>{
 });}
 function movePl(i){set(()=>{const a=S.players;[a[i-1],a[i]]=[a[i],a[i-1]];});}
 function chPt(k,d){set(()=>{S.config.pts[k]=Math.max(0,S.config.pts[k]+d);});}
+function chStblPt(k,d){set(()=>{S.config.stbl.pts[k]=Math.min(10,Math.max(-5,S.config.stbl.pts[k]+d));});}
 function chAllow(d){set(()=>{S.config.allowance=Math.min(100,Math.max(50,S.config.allowance+d));});}
 function setSpan(count,start){set(()=>{S.config.span={count,start};});}
 function startRound(){
@@ -1982,6 +2010,7 @@ function startRound(){
     opts:S.round.game==='nines'?{n:S.config.nines.n,blitz:S.config.nines.blitz,ctp:S.config.nines.ctp}
       :S.round.game==='vegas'?{rotate:S.config.vegas.rotate,flip:S.config.vegas.flip,ctp:S.config.vegas.ctp}
       :S.round.game==='scramble'?{teams:S.config.scramble.teams}
+      :S.round.game==='stableford'?{n:S.config.stbl.n,pts:S.config.stbl.pts}
       :S.round.game==='wolf'?{carry:S.config.carryTies,last2:S.config.last2LastPlace}:{}});
   if(withNearby&&!S.share.on)shareRound();
 }
@@ -2000,7 +2029,7 @@ function prefillNines(h){
 // ----- hole screen -----
 function vHole(){
   if(!S.round.started) return topbar(gameName(),'','home')+`<main><div class="card center">No round in progress.<button class="big mt" onclick="go('home')">Pick a game</button></div></main>`;
-  if(['nines','stroke','bestball'].includes(gameOn())) return vHoleNines();
+  if(['nines','stroke','bestball','stableford'].includes(gameOn())) return vHoleNines();
   if(gameOn()==='vegas') return vHoleVegas();
   if(gameOn()==='scramble') return vHoleScramble();
   const h=S.round.cur, hole=S.course.holes[h], rec=S.round.holes[h];
@@ -2368,7 +2397,7 @@ function stViews(){
   const v=[[g,gameName(g)]];
   if(g==='scramble')return v;  // one ball per team — nothing to re-score
   if(g!=='stroke')v.push(['stroke','Stroke']);
-  v.push(['stableford','Stableford']);
+  if(g!=='stableford')v.push(['stableford','Stableford']);
   if(four&&g!=='bestball')v.push(['match','Match']);
   if(g!=='nines'&&NP()>=3)v.push(['nines','9’s']);
   if(g!=='vegas'&&four)v.push(['vegas','Vegas']);
@@ -2383,13 +2412,15 @@ function computeStroke(){
       if(s!=null){led[L][i]+=s;par[L][i]+=S.course.holes[h].par;}});}
   return {ledgers:led,par};
 }
+function stblPts(){return (S.config.stbl&&S.config.stbl.pts)||{alba:5,eagle:4,birdie:3,par:2,bogey:1,dbl:0};}
 function computeStableford(){
+  const P=stblPts();
   const led={net:[0,0,0,0],gross:[0,0,0,0]};
   for(let h=0;h<HOLES;h++){const rec=S.round.holes[h];if(!rec.confirmed)continue;
     const p=S.course.holes[h].par;
     for(const L of ['net','gross'])actIdx().forEach(i=>{const g=rec.gross[i];if(g==null)return;
       const s=L==='net'?g-fullDotsOn(i,h):g;
-      const d=s-p;led[L][i]+=d<=-3?5:d===-2?4:d===-1?3:d===0?2:d===1?1:0;});}
+      const d=s-p;led[L][i]+=d<=-3?P.alba:d===-2?P.eagle:d===-1?P.birdie:d===0?P.par:d===1?P.bogey:P.dbl;});}
   return {ledgers:led};
 }
 function matchTeams(){
@@ -2464,6 +2495,10 @@ function vStandings(){
       ${actIdx().slice().sort((a,b)=>bb.ledgers[prim][b]-bb.ledgers[prim][a]).map(i=>`<tr><td>${esc(S.players[i].name)}</td>${cols.map(L=>`<td class="r num" style="font-size:34px">${bb.ledgers[L][i]}</td>`).join('')}</tr>`).join('')}
       </table>${teamPickerRow()}
       <div class="tiny mt">Better ball of each team wins the hole.</div></div>`;
+  }else if(view===g&&g==='stableford'){
+    const P=stblPts();
+    tables=genericCard('Stableford',computeStableford().ledgers,v=>String(v),false,
+      `<div class="tiny mt">Birdie ${P.birdie} · par ${P.par} · bogey ${P.bogey} · double+ ${P.dbl} · eagle ${P.eagle} · albatross ${P.alba}. Highest wins.</div>`);
   }else if(view===g&&g==='stroke'){
     const st=computeStroke();
     tables=genericCard('Stroke play',st.ledgers,(v,L,i)=>{if(!thru)return '-';const d=v-st.par[L][i];
@@ -2480,8 +2515,8 @@ function vStandings(){
       return `${v} <span style="font-size:12px">${d===0?'E':(d>0?'+':'')+d}</span>`;},true,
       `<div class="tiny mt">Total strokes over confirmed holes — lowest wins.</div>`);
   }else if(view==='stableford'){
-    tables=genericCard('Stableford',computeStableford().ledgers,v=>String(v),false,
-      `<div class="tiny mt">Par 2 · birdie 3 · eagle 4 · bogey 1 · double or worse 0. Highest wins.</div>`);
+    tables=(()=>{const P=stblPts();return genericCard('Stableford',computeStableford().ledgers,v=>String(v),false,
+      `<div class="tiny mt">Birdie ${P.birdie} · par ${P.par} · bogey ${P.bogey} · double+ ${P.dbl}. Highest wins.</div>`);})();
   }else if(view==='nines'){
     tables=genericCard('9’s',computeNines().ledgers,v=>fmtPts(v),false,
       `<div class="tiny mt">Every hole splits 9 points — 5 · 3 · 1${NP()===4?' · 0':''}. Ties pool and split.</div>`);
