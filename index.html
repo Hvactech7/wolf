@@ -135,6 +135,8 @@
   .gamebtn.quotag:active{box-shadow:1px 1px 0 #2a7d8a}
   .quota-ph{font-family:Rajdhani,sans-serif;font-weight:700;font-size:34px;color:#5ad0e0;flex:none;margin:0 14px 0 0;text-shadow:0 0 10px rgba(90,208,224,.6)}
   .gamebtn.stblg{background:rgba(201,79,124,.12);border-color:#c94f7c;box-shadow:3px 3px 0 #7c2f4c}
+  .gamebtn.bbbg{background:rgba(210,75,184,.10);border-color:#d24bb8;box-shadow:3px 3px 0 #7d2a6d}
+  .bbb-ph{font-size:34px;flex:none;margin:0 14px 0 0}
   .gamebtn.stblg:active{box-shadow:1px 1px 0 #7c2f4c}
   .stbl-ph{font-size:38px;margin:0 16px 0 0;flex:none}
   .gamebtn.bbg{background:rgba(42,167,160,.12);border-color:#2aa7a0;box-shadow:3px 3px 0 #17615d}
@@ -199,7 +201,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1783913482';
+const BUILD='1783915196';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -268,6 +270,7 @@ function load(){
       if(!s.config.quota)s.config.quota={n:4,pts:{alba:6,eagle:4,birdie:3,par:2,bogey:0}};
       if(!s.config.sixes)s.config.sixes={pairing:0};
       if(!s.config.hammer)s.config.hammer={on:false};
+      if(!s.config.bbb)s.config.bbb={n:4};
       if(!s.config.scramble)s.config.scramble={teams:'2v2'};
       if(!s.history)s.history=[];
       if(!s.config.span)s.config.span={count:18,start:0};
@@ -748,13 +751,14 @@ function gameOn(){
   const roundScr=['hole','standings','settle','map'].includes(S.screen);
   return (roundScr&&S.round.started&&S.round.game)||S.config.game||'wolf';
 }
-function gameName(g){const x=g||gameOn();return x==='nines'?'9’s':x==='vegas'?'Vegas':x==='stroke'?'Stroke':x==='bestball'?'Best Ball':x==='scramble'?'Scramble':x==='stableford'?'Stableford':x==='quota'?'Quota':x==='sixes'?'Sixes':x==='umbrella'?'Umbrella':'Wolf';}
+function gameName(g){const x=g||gameOn();return x==='nines'?'9’s':x==='vegas'?'Vegas':x==='stroke'?'Stroke':x==='bestball'?'Best Ball':x==='scramble'?'Scramble':x==='stableford'?'Stableford':x==='quota'?'Quota':x==='sixes'?'Sixes':x==='umbrella'?'Umbrella':x==='bbb'?'Bingo Bango Bongo':'Wolf';}
 function NP(){
   const g=gameOn();
   if(g==='nines'&&S.config.nines&&S.config.nines.n===3)return 3;
   if(g==='stroke'&&S.config.stroke)return Math.min(4,Math.max(1,S.config.stroke.n||4));
   if(g==='stableford'&&S.config.stbl)return Math.min(4,Math.max(1,S.config.stbl.n||4));
   if(g==='quota'&&S.config.quota)return Math.min(4,Math.max(1,S.config.quota.n||4));
+  if(g==='bbb'&&S.config.bbb)return Math.min(4,Math.max(2,S.config.bbb.n||4));
   return 4;
 }
 function actIdx(){return [0,1,2,3].slice(0,NP());}
@@ -822,7 +826,7 @@ function runningTotalsCard(){
         <div class="tiny" style="text-align:center;margin-top:6px">points · +/− vs quota · thru ${thru}</div></div>`;
     }
     const eng=g==='nines'?computeNines():g==='vegas'?computeVegas():g==='stableford'?computeStableford()
-      :g==='sixes'?computeSixes():g==='umbrella'?computeUmbrella():computeAll();
+      :g==='sixes'?computeSixes():g==='umbrella'?computeUmbrella():g==='bbb'?computeBBB():computeAll();
     const f=g==='nines'?fmtPts:String;
     cells=actIdx().map(i=>cell(first(i),big(f(eng.ledgers[L][i])))).join('');
     if(g==='sixes'){const T=sixesTeamsFor(S.round.cur);
@@ -1075,6 +1079,18 @@ function computeQuota(){
   }
   return {ledgers:{net:led.slice(),gross:led.slice()},targets:quotaTargets(),perHole:null,carries:{net:0,gross:0},lenses:['net','gross']};
 }
+// Bingo Bango Bongo: three taps a hole — first ball ON the green, closest to
+// the pin once ALL balls are on, first ball IN the cup. Pure tap game (no
+// score math); the gross scores still feed the card and the what-if tabs.
+function computeBBB(){
+  const led=[0,0,0,0];
+  for(const h of playOrder()){
+    const rec=S.round.holes[h];if(!rec.confirmed)continue;
+    const b=rec.bbb||{};
+    ['bingo','bango','bongo'].forEach(k=>{const i=b[k];if(i!=null&&i>=0&&i<4)led[i]+=1;});
+  }
+  return {ledgers:{net:led.slice(),gross:led.slice()},perHole:null,carries:{net:0,gross:0},lenses:['net','gross']};
+}
 // Sixes: 2v2 best-ball hole wins, partners rotate every six holes (three for a
 // nine) so everyone partners everyone. Ties break on both balls, then push.
 function sixesTeamsFor(h){
@@ -1133,6 +1149,7 @@ function computeUmbrella(){
   return {ledgers,sweeps,perHole:null,carries:{net:0,gross:0},lenses:['net','gross']};
 }
 function computeGame(){const g=gameOn();
+  if(g==='bbb')return computeBBB();
   if(g==='sixes')return computeSixes();
   if(g==='umbrella')return computeUmbrella();
   if(g==='quota')return computeQuota();
@@ -1454,17 +1471,17 @@ function vHome(){
     <button class="gamebtn strokeg" onclick="pickGame('stroke')">
       <div style="flex:1;min-width:0"><span class="gname">Stroke</span>
         <div class="tiny">Classic scoring — lowest total wins</div></div>
-      <span class="stroke-ph">⛳</span>
+      <img src="${art('stroke.png')}" alt="" style="height:92px;margin:4px 8px 4px 0;filter:drop-shadow(0 0 6px rgba(224,187,69,.5))" onerror="this.outerHTML='<span class=&quot;stroke-ph&quot;>⛳</span>'">
     </button>
     <button class="gamebtn bbg" onclick="pickGame('bestball')">
       <div style="flex:1;min-width:0"><span class="gname">Best Ball</span>
         <div class="tiny">2 v 2 match play — your team's best score counts</div></div>
-      <span class="bb-ph">🏆</span>
+      <img src="${art('bestball.png')}" alt="" style="height:92px;margin:4px 8px 4px 0;filter:drop-shadow(0 0 6px rgba(42,167,160,.55))" onerror="this.outerHTML='<span class=&quot;bb-ph&quot;>🏆</span>'">
     </button>
     <button class="gamebtn scrg" onclick="pickGame('scramble')">
       <div style="flex:1;min-width:0"><span class="gname">Scramble</span>
         <div class="tiny">One Ball Per Team</div></div>
-      <span class="scr-ph">🤝</span>
+      <img src="${art('scramble.png')}" alt="" style="height:92px;margin:4px 8px 4px 0;filter:drop-shadow(0 0 6px rgba(142,92,217,.55))" onerror="this.outerHTML='<span class=&quot;scr-ph&quot;>🤝</span>'">
     </button>
     <button class="gamebtn sixg" onclick="pickGame('sixes')">
       <div style="flex:1;min-width:0"><span class="gname">Sixes</span>
@@ -1484,7 +1501,12 @@ function vHome(){
     <button class="gamebtn stblg" onclick="pickGame('stableford')">
       <div style="flex:1;min-width:0"><span class="gname">Stableford</span>
         <div class="tiny">Points for your score vs par — highest wins</div></div>
-      <span class="stbl-ph">🎯</span>
+      <img src="${art('stableford.png')}" alt="" style="height:92px;margin:4px 8px 4px 0;filter:drop-shadow(0 0 6px rgba(201,79,124,.55))" onerror="this.outerHTML='<span class=&quot;stbl-ph&quot;>🎯</span>'">
+    </button>
+    <button class="gamebtn bbbg" onclick="pickGame('bbb')">
+      <div style="flex:1;min-width:0"><span class="gname">Bingo Bango Bongo</span>
+        <div class="tiny">Three taps a hole — the great equalizer</div></div>
+      <img src="${art('bbb.png')}" alt="" style="height:92px;margin:4px 8px 4px 0;filter:drop-shadow(0 0 6px rgba(210,75,184,.5))" onerror="this.outerHTML='<span class=&quot;bbb-ph&quot;>🥁</span>'">
     </button>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
@@ -1575,16 +1597,16 @@ function vRules(){
     '<b>The flip:</b> a birdie flips the opponent’s number high-first — their 4-and-8 becomes <b>84</b>. Both teams birdie = no flip.',
     '<b>Partner swap (option):</b> teams rotate twice during the round so everyone partners everyone.',
     'Swings are huge — set the $ per point low.']))}
-  ${ruleCard(em('⛳'),'Stroke','Classic scoring — lowest total wins',li([
+  ${ruleCard(img('stroke.png',48),'Stroke','Classic scoring — lowest total wins',li([
     'Everyone plays their own ball; lowest total over the round wins. Works with 2, 3 or 4 players.',
     'Settlement pays by <b>strokes of difference</b>.',
     'Use the Standings tabs mid-round to see the same scores as Stableford, Match play, 9’s or Vegas.']))}
-  ${ruleCard(em('🏆'),'Best Ball','2 v 2 match play — best ball counts',li([
+  ${ruleCard(img('bestball.png',48),'Best Ball','2 v 2 match play — best ball counts',li([
     'Everyone plays their own ball; each hole, the <b>better ball of each team</b> goes head to head.',
     'Win the hole, go 1 UP. Most holes up wins the match — clinch early and it ends “3&2” style.',
     '<b>Dormie:</b> leading by exactly the holes remaining — the leader can’t lose.',
     'Settlement pays by <b>holes of difference</b>.']))}
-  ${ruleCard(em('🤝'),'Scramble','One ball per team',li([
+  ${ruleCard(img('scramble.png',48),'Scramble','One ball per team',li([
     'Everyone tees off, the team picks the best shot, everyone plays from there — one score per team per hole.',
     '<b>2 v 2:</b> the higher-handicap team gets net strokes via the <b>35% / 15%</b> two-player allowance.',
     '<b>One team (all 4):</b> tournament mode — the app keeps the official card; net uses the <b>25/20/15/10%</b> allowance.',
@@ -1605,12 +1627,18 @@ function vRules(){
     '<b>Accept:</b> the double is live and the hammer changes hands — only the accepting team can throw the next one. Re-hammers stack: 2×, 4×, 8×…',
     '<b>Fold:</b> concede the hole at the old stake and move on. Cheap insurance or slow bleed — you decide.',
     'Every hole starts fresh at 1× with the hammer in the air. Throw it when your opponent is in the trees.']))}
+  ${ruleCard(img('bbb.png',48),'Bingo Bango Bongo','Three taps a hole — the great equalizer',li([
+    '<b>🟢 Bingo:</b> first ball <b>on the green</b> — the short hitter playing first has the inside track.',
+    '<b>📍 Bango:</b> once <b>every ball is on</b>, closest to the pin takes it.',
+    '<b>⛳ Bongo:</b> first ball <b>in the cup</b> — putting order matters, lags win points.',
+    '<b>Play strictly in turn</b> — farthest from the hole plays first. That etiquette IS the game; break it and the point is forfeit.',
+    'No handicaps needed — a 30 can beat a scratch player all day. Most taps at the end wins.']))}
   ${(()=>{const P=quotaPts();return ruleCard(img('quota.png',48),'Quota','Race your own number',li([
     '<b>Your quota:</b> 36 minus your course handicap (18 for a nine-hole round) — a personal target that makes every handicap fair.',
     `<b>Points from gross scores:</b> par <b>${P.par}</b> · birdie <b>${P.birdie}</b> · eagle <b>${P.eagle}</b> · albatross <b>${P.alba}</b> · bogey <b>${P.bogey}</b> — adjustable in setup.`,
     '<b>Winning:</b> beat your quota by the most. A 25-handicap grinding pars can beat a scratch player having an off day — that is the whole point.',
     'Works with 1–4 players; no strokes on holes, no dots — the handicap lives entirely in the target.']));})()}
-  ${(()=>{const P=stblPts();return ruleCard(em('🎯'),'Stableford','Points for your score vs par',li([
+  ${(()=>{const P=stblPts();return ruleCard(img('stableford.png',48),'Stableford','Points for your score vs par',li([
     `<b>Points per hole:</b> albatross <b>${P.alba}</b> · eagle <b>${P.eagle}</b> · birdie <b>${P.birdie}</b> · par <b>${P.par}</b> · bogey <b>${P.bogey}</b> · double or worse <b>${P.dbl}</b> — all adjustable in setup.`,
     'Highest total wins. Blow-up holes stop hurting after double — pick up and move on.',
     'Works with 1–4 players; net plays off your full course handicap.']));})()}
@@ -2033,6 +2061,7 @@ function vSetup(){
   const umbrella=S.config.game==='umbrella';
   const bestball=S.config.game==='bestball';
   const scramble=S.config.game==='scramble';
+  const bbb=S.config.game==='bbb';
   const rows=actIdx().map(i=>{
     const p=S.players[i];
     const teeOpts=S.course.teeSets.map(t=>`<option value="${t.id}" ${p.tee===t.id?'selected':''}>${esc(t.name)}</option>`).join('');
@@ -2059,7 +2088,7 @@ function vSetup(){
     <div class="stepper"><button onclick="chPt('${k}',-1)">−</button><span class="val num">${P[k]}</span><button onclick="chPt('${k}',1)">+</button></div></div>`;
   const V=S.config.vegas;
   const pairLbl=T=>`${esc(S.players[T[0][0]].name)} &amp; ${esc(S.players[T[0][1]].name)} <span class="muted">vs</span> ${esc(S.players[T[1][0]].name)} &amp; ${esc(S.players[T[1][1]].name)}`;
-  return topbar(`Round setup — ${gameName(S.config.game)}`,nines?'Every hole is worth 9 points: 5 · 3 · 1':vegas?'Low team number takes the difference':stroke?'Straight scoring — net, gross or both':stbl?'Points vs par — highest total wins':quota?'Beat your own number':sixes?'Partners rotate — best ball wins the hole':umbrella?'Six points a hole — sweep for twelve':bestball?'2 v 2 — better ball wins the hole':scramble?'2 v 2 — one ball per team':'Order = tee order on hole 1 (wolf rotation)','home')+`<main>
+  return topbar(`Round setup — ${gameName(S.config.game)}`,nines?'Every hole is worth 9 points: 5 · 3 · 1':vegas?'Low team number takes the difference':stroke?'Straight scoring — net, gross or both':stbl?'Points vs par — highest total wins':quota?'Beat your own number':sixes?'Partners rotate — best ball wins the hole':umbrella?'Six points a hole — sweep for twelve':bbb?'Three taps a hole — bingo, bango, bongo':bestball?'2 v 2 — better ball wins the hole':scramble?'2 v 2 — one ball per team':'Order = tee order on hole 1 (wolf rotation)','home')+`<main>
   ${rows}
   ${sixes?`<div class="card"><h2>Starting partners</h2>
     ${[[[0,1],[2,3]],[[0,2],[1,3]],[[0,3],[1,2]]].map((T,pi)=>`
@@ -2102,6 +2131,13 @@ function vSetup(){
         <div class="stepper"><button onclick="chQuotaPt('${k}',-1)">−</button><span class="val num">${S.config.quota.pts[k]}</span><button onclick="chQuotaPt('${k}',1)">+</button></div></div>`).join('')}
     <div class="tiny mt">Your quota = ${playOrder().length===9?'18':'36'} minus your course handicap — beat it by the most and you win. Points come from gross scores; the handicap lives in the target.
     <b>Quotas today: ${actIdx().map(i=>`${esc((S.players[i].name||'').split(' ')[0])} ${quotaTargets()[i]}`).join(' · ')}</b></div>
+  </div>`:''}
+  ${bbb?`<div class="card"><h2>Bingo Bango Bongo</h2>
+    <div class="row" style="border-top:none"><span class="muted">Players in the round</span>
+      <span class="seg" style="display:inline-flex;gap:6px">
+        ${[2,3,4].map(n=>`<button class="ghost ${NP()===n?'sel':''}" onclick="set(()=>S.config.bbb.n=${n})">${n}</button>`).join('')}
+      </span></div>
+    <div class="tiny mt">Three points every hole, no handicaps needed — order of play is the equalizer. First on the green can be the short hitter playing first; play strictly in turn and everyone eats.</div>
   </div>`:''}
   ${stbl?`<div class="card"><h2>Stableford</h2>
     <div class="row"><span class="muted">Players in the round</span>
@@ -2235,6 +2271,7 @@ function startRound(){
       :S.round.game==='quota'?{n:S.config.quota.n,pts:S.config.quota.pts}
       :S.round.game==='sixes'?{pairing:S.config.sixes.pairing,hammer:!!S.config.hammer.on}
       :S.round.game==='bestball'?{hammer:!!S.config.hammer.on}
+      :S.round.game==='bbb'?{n:S.config.bbb.n}
       :S.round.game==='umbrella'?{pairing:S.config.vegas.pairing}
       :S.round.game==='wolf'?{carry:S.config.carryTies,last2:S.config.last2LastPlace}:{}});
   if(withNearby&&!S.share.on)shareRound();
@@ -2254,7 +2291,7 @@ function prefillNines(h){
 // ----- hole screen -----
 function vHole(){
   if(!S.round.started) return topbar(gameName(),'','home')+`<main><div class="card center">No round in progress.<button class="big mt" onclick="go('home')">Pick a game</button></div></main>`;
-  if(['nines','stroke','bestball','stableford','quota','sixes','umbrella'].includes(gameOn())) return vHoleNines();
+  if(['nines','stroke','bestball','stableford','quota','sixes','umbrella','bbb'].includes(gameOn())) return vHoleNines();
   if(gameOn()==='vegas') return vHoleVegas();
   if(gameOn()==='scramble') return vHoleScramble();
   const h=S.round.cur, hole=S.course.holes[h], rec=S.round.holes[h];
@@ -2363,6 +2400,7 @@ function prefill(r){const par=S.course.holes[S.round.cur].par;if(!r.gts)r.gts=[0
 function redoPick(){set(()=>{const r=S.round.holes[S.round.cur];r.mode=null;r.partner=null;});}
 function chScore(i,d){set(()=>{const r=S.round.holes[S.round.cur];const v=(r.gross[i]??S.course.holes[S.round.cur].par)+d;r.gross[i]=Math.min(15,Math.max(1,v));if(!r.gts)r.gts=[0,0,0,0];r.gts[i]=Date.now();});}
 function setCtp(i){set(()=>{S.round.holes[S.round.cur].ctp=i;});}
+function setBBB(k,i){set(()=>{const rec=S.round.holes[S.round.cur];rec.bbb=Object.assign({},rec.bbb);rec.bbb[k]=i;});}
 // The Hammer card on the hole screen: idle → throw, pending → accept/fold.
 function hammerCardHTML(){
   const h=S.round.cur,rec=S.round.holes[h];
@@ -2440,7 +2478,16 @@ function vHoleNines(){
     <div class="tiny mt">Ball must be on the green. Unclaimed = no point.</div></div>`:'';
   const hamSt=hammerOn()?hamState(rec):null;
   const hamCard=hammerOn()?hammerCardHTML():'';
-  let done=act.every(i=>rec.gross[i]!=null)&&(!ctpOn||rec.ctp!=null);
+  const bbbOn=gameOn()==='bbb';
+  const bbbCard=bbbOn?`<div class="card"><h2>3 points on this hole</h2>
+    ${[['bingo','\u{1F7E2} Bingo','first ball on the green'],['bango','\u{1F4CD} Bango','closest to the pin once all balls are on'],['bongo','\u26F3 Bongo','first ball in the cup']].map(([k,l,dsc])=>{
+      const cur=rec.bbb?rec.bbb[k]:null;
+      return `<div class="mt"><b>${l}</b> <span class="tiny">— ${dsc}</span>
+        <div class="flexwrap" style="margin-top:5px">${act.map(i=>`<button class="ghost ${cur===i?'sel':''}" onclick="setBBB('${k}',${i})">${esc(S.players[i].name)}</button>`).join('')}
+        <button class="ghost ${cur===-1?'sel':''}" onclick="setBBB('${k}',-1)">No one</button></div></div>`;}).join('')}
+    <div class="tiny mt">Play in turn — farthest away hits first. That order is the whole game.</div></div>`:'';
+  let done=act.every(i=>rec.gross[i]!=null)&&(!ctpOn||rec.ctp!=null)
+    &&(!bbbOn||(rec.bbb&&['bingo','bango','bongo'].every(k=>rec.bbb[k]!=null)));
   if(hamSt){if(hamSt.fold>=0)done=true;else if(hamSt.pend>=0)done=false;}
   let resultNote='';
   if(rec.confirmed&&isN){
@@ -2462,7 +2509,7 @@ function vHoleNines(){
   const body=`<div class="card">
     ${act.some(i=>rec.gross[i]==null)?`<button class="ghost mb" style="width:100%" onclick="set(()=>prefillNines(${h}))">Everyone to par ${hole.par} — adjust from there</button>`:''}
     ${scoreRows}
-    </div>${hamCard}${ctpRow}${extrasCard}${resultNote}
+    </div>${hamCard}${bbbCard}${ctpRow}${extrasCard}${resultNote}
     ${rec.confirmed
       ?`${isReview()?'':`<button class="big" onclick="nextHole()">${posOf(h)<playOrder().length-1?'Next hole →':'Finish round'}</button>`}
         <button class="ghost mt" style="width:100%" onclick="unconfirm()">Edit this hole</button>`
@@ -2789,6 +2836,9 @@ function vStandings(){
     tables=genericCard('Umbrella',u.ledgers,v=>String(v),false,
       `<div class="tiny mt">Six points a hole: 2 low ball · 2 low team total · 1 closest to pin · 1 gross birdie.
       Sweep all six and it doubles to <b>12</b>${u.sweeps[prim]?` — ☂ ${u.sweeps[prim]} umbrella${u.sweeps[prim]>1?'s':''} opened!`:''}.</div>`);
+  }else if(view===g&&g==='bbb'){
+    tables=genericCard('Bingo Bango Bongo',computeBBB().ledgers,v=>String(v),false,
+      `<div class="tiny mt">Three points a hole: \u{1F7E2} first on the green · \u{1F4CD} closest once all on · \u26F3 first in the cup. Most taps wins.</div>`);
   }else if(view===g&&g==='stroke'){
     const st=computeStroke();
     tables=genericCard('Stroke play',st.ledgers,(v,L,i)=>{if(!thru)return '-';const d=v-st.par[L][i];
@@ -2949,7 +2999,7 @@ function newRound(){
 // paint from memory — no service-worker round trips, no background network
 // revalidation per render, no pop-in on flaky signal.
 const ART={};
-['banner.jpg','wolf.png','nine.png','vegas.png','quota.png','sixes.png','umbrella.png','hammer.png','crest.jpg'].forEach(f=>{
+['banner.jpg','wolf.png','nine.png','vegas.png','quota.png','sixes.png','umbrella.png','hammer.png','bbb.png','stroke.png','stableford.png','bestball.png','scramble.png','crest.jpg'].forEach(f=>{
   fetch(f).then(r=>r.ok?r.blob():null).then(b=>{
     if(!b)return;
     ART[f]=URL.createObjectURL(b);
