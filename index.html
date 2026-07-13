@@ -139,6 +139,8 @@
   .bbb-ph{font-size:34px;flex:none;margin:0 14px 0 0}
   .gamebtn.nasg{background:rgba(70,99,217,.10);border-color:#4663d9;box-shadow:3px 3px 0 #2a3b85}
   .nas-ph{font-size:34px;flex:none;margin:0 14px 0 0}
+  .gamebtn.sking{background:rgba(61,220,151,.10);border-color:#3ddc97;box-shadow:3px 3px 0 #1f7d57}
+  .skin-ph{font-size:34px;flex:none;margin:0 14px 0 0}
   .gamebtn.stblg:active{box-shadow:1px 1px 0 #7c2f4c}
   .stbl-ph{font-size:38px;margin:0 16px 0 0;flex:none}
   .gamebtn.bbg{background:rgba(42,167,160,.12);border-color:#2aa7a0;box-shadow:3px 3px 0 #17615d}
@@ -203,7 +205,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1783973837';
+const BUILD='1783974883';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -236,6 +238,7 @@ function defaultConfig(){
     hammer:{on:false},
     bbb:{n:4},
     nassau:{n:4,press:'manual'},
+    skins:{n:4,amt:1,carry:true,per:null},
     scramble:{teams:'2v2'},
     span:{count:18,start:0},
     track:{putts:false,bunker:false,chips:false,pen:false},
@@ -278,6 +281,7 @@ function load(){
       if(!s.config.hammer)s.config.hammer={on:false};
       if(!s.config.bbb)s.config.bbb={n:4};
       if(!s.config.nassau)s.config.nassau={n:4,press:'manual'};
+      if(!s.config.skins)s.config.skins={n:4,amt:1,carry:true,per:null};
       if(!s.config.scramble)s.config.scramble={teams:'2v2'};
       if(!s.history)s.history=[];
       if(!s.config.span)s.config.span={count:18,start:0};
@@ -826,7 +830,7 @@ function gameOn(){
   const roundScr=['hole','standings','settle','map'].includes(S.screen);
   return (roundScr&&S.round.started&&S.round.game)||S.config.game||'wolf';
 }
-function gameName(g){const x=g||gameOn();return x==='nines'?'9’s':x==='vegas'?'Vegas':x==='stroke'?'Stroke':x==='bestball'?'Best Ball':x==='scramble'?'Scramble':x==='stableford'?'Stableford':x==='quota'?'Quota':x==='sixes'?'Sixes':x==='umbrella'?'Umbrella':x==='bbb'?'Bingo Bango Bongo':x==='nassau'?'Nassau':'Wolf';}
+function gameName(g){const x=g||gameOn();return x==='nines'?'9’s':x==='vegas'?'Vegas':x==='stroke'?'Stroke':x==='bestball'?'Best Ball':x==='scramble'?'Scramble':x==='stableford'?'Stableford':x==='quota'?'Quota':x==='sixes'?'Sixes':x==='umbrella'?'Umbrella':x==='bbb'?'Bingo Bango Bongo':x==='nassau'?'Nassau':x==='skins'?'Skins':'Wolf';}
 function NP(){
   const g=gameOn();
   if(g==='nines'&&S.config.nines&&S.config.nines.n===3)return 3;
@@ -835,6 +839,7 @@ function NP(){
   if(g==='quota'&&S.config.quota)return Math.min(4,Math.max(1,S.config.quota.n||4));
   if(g==='bbb'&&S.config.bbb)return Math.min(4,Math.max(2,S.config.bbb.n||4));
   if(g==='nassau'&&S.config.nassau)return S.config.nassau.n===2?2:4;
+  if(g==='skins'&&S.config.skins)return Math.min(4,Math.max(2,S.config.skins.n||4));
   return 4;
 }
 function actIdx(){return [0,1,2,3].slice(0,NP());}
@@ -902,13 +907,14 @@ function runningTotalsCard(){
         <div class="tiny" style="text-align:center;margin-top:6px">points · +/− vs quota · thru ${thru}</div></div>`;
     }
     const eng=g==='nines'?computeNines():g==='vegas'?computeVegas():g==='stableford'?computeStableford()
-      :g==='sixes'?computeSixes():g==='umbrella'?computeUmbrella():g==='bbb'?computeBBB():g==='nassau'?computeNassau():computeAll();
-    const f=g==='nines'?fmtPts:String;
+      :g==='sixes'?computeSixes():g==='umbrella'?computeUmbrella():g==='bbb'?computeBBB():g==='nassau'?computeNassau():g==='skins'?computeSkins():computeAll();
+    const f=g==='nines'?fmtPts:g==='skins'?fmtMoney:String;
     cells=actIdx().map(i=>cell(first(i),big(f(eng.ledgers[L][i])))).join('');
     if(g==='sixes'){const T=sixesTeamsFor(S.round.cur);
       foot=`${T[0].map(first).join(' & ')} v ${T[1].map(first).join(' & ')}`;}
     else if(g==='nassau'){const sgn=x=>x===0?'AS':(x>0?'+':'')+x;
       foot=eng.bets[L].filter(b=>!b.press).map(b=>`${b.seg[0].toUpperCase()} ${sgn(b.up)}`).join(' · ');}
+    else if(g==='skins'){foot=eng.pot[L]>0?fmtMoney(eng.pot[L])+' riding':'dollars won';}
     else foot='points';
   }
   return `<div class="card" style="padding:14px 12px 10px"><div style="display:flex;gap:4px">${cells}</div>
@@ -1169,6 +1175,45 @@ function computeBBB(){
   }
   return {ledgers:{net:led.slice(),gross:led.slice()},perHole:null,carries:{net:0,gross:0},lenses:['net','gross']};
 }
+// Skins: every hole carries a dollar amount (uniform by default, adjustable
+// per hole). Lowest score wins the hole OUTRIGHT to take the skin; a tie
+// rolls the pot into the next hole (optional). Ledgers hold dollars won —
+// pairwise settlement is the difference of skins-$ totals, no $/pt needed.
+function fmtMoney(v){const n=+(+v).toFixed(2);return '$'+(n%1===0?n:n.toFixed(2));}
+function skinsHoleVals(){
+  const c=S.config.skins||{};
+  const a=Math.max(0,+c.amt||0);
+  return Array.from({length:18},(_,h)=>(c.per&&c.per[h]!=null)?Math.max(0,+c.per[h]||0):a);
+}
+function computeSkins(){
+  const act=actIdx();
+  const cfg=S.config.skins||{amt:1,carry:true};
+  const vals=skinsHoleVals();
+  const out={lenses:['net','gross'],ledgers:{net:[0,0,0,0],gross:[0,0,0,0]},count:{net:[0,0,0,0],gross:[0,0,0,0]},pot:{net:0,gross:0},detail:{net:[],gross:[]},perHole:null,carries:{net:0,gross:0}};
+  for(const L of ['net','gross']){
+    let pot=0;
+    for(const h of playOrder()){
+      const rec=S.round.holes[h];if(!rec.confirmed)continue;
+      const sc=act.map(i=>{const g=rec.gross[i];return g==null?99:(L==='net'?g-dotsOn(i,h):g);});
+      const best=Math.min(...sc);
+      const winners=act.filter((i,k)=>sc[k]===best);
+      pot=+(pot+vals[h]).toFixed(2);
+      if(winners.length===1&&best<99){
+        out.ledgers[L][winners[0]]=+(out.ledgers[L][winners[0]]+pot).toFixed(2);
+        out.count[L][winners[0]]++;
+        out.detail[L].push({h,won:winners[0],amt:pot});
+        pot=0;
+      }else if(cfg.carry===false){
+        out.detail[L].push({h,won:null,amt:vals[h],dead:true});
+        pot=0;
+      }else{
+        out.detail[L].push({h,won:null,amt:pot,carried:true});
+      }
+    }
+    out.pot[L]=pot;
+  }
+  return out;
+}
 // Nassau: the classic three-bet round — front nine, back nine, overall.
 // Singles (1v1) or 2v2 best ball. Presses open a fresh bet on the remaining
 // holes of a nine: rec.press=side marks a manual press starting at that hole;
@@ -1277,6 +1322,7 @@ function computeUmbrella(){
   return {ledgers,sweeps,perHole:null,carries:{net:0,gross:0},lenses:['net','gross']};
 }
 function computeGame(){const g=gameOn();
+  if(g==='skins')return computeSkins();
   if(g==='nassau')return computeNassau();
   if(g==='bbb')return computeBBB();
   if(g==='sixes')return computeSixes();
@@ -1646,6 +1692,11 @@ function vHome(){
         <div class="tiny">The classic — front nine, back nine, overall. Press when you're down</div></div>
       <img src="${art('nassau.png')}" alt="" style="height:92px;margin:4px 8px 4px 0;filter:drop-shadow(0 0 6px rgba(70,99,217,.55))" onerror="this.outerHTML='<span class=&quot;nas-ph&quot;>🏅</span>'">
     </button>
+    <button class="gamebtn sking" onclick="pickGame('skins')">
+      <div style="flex:1;min-width:0"><span class="gname">Skins</span>
+        <div class="tiny">Win the hole outright — ties roll the pot</div></div>
+      <img src="${art('skins.png')}" alt="" style="height:92px;margin:4px 8px 4px 0;filter:drop-shadow(0 0 6px rgba(61,220,151,.5))" onerror="this.outerHTML='<span class=&quot;skin-ph&quot;>🪙</span>'">
+    </button>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
     <button class="ghost" style="padding:12px" onclick="go('courses')">⛳ Courses</button>
@@ -1878,6 +1929,12 @@ function vRules(){
     '<b>The press:</b> a side that is down can press — a brand-new bet at the same stake covering the remaining holes of that nine. Set presses to anytime, classic <b>2-down automatic</b>, or off.',
     '<b>Fresh starts:</b> a rough front nine cannot touch the back-nine bet — everyone grinds to the 18th.',
     'Born at Nassau Country Club, Long Island, around 1900 — invented so badly beaten members never lost worse than "3 points" in the club results.']))}
+  ${ruleCard(img('skins.png',48),'Skins','Win the hole outright — ties roll the pot',li([
+    '<b>Every hole has a price on it</b> — the same amount by default, or set each hole its own value (double the 18th, jack up the par 3s… your call).',
+    '<b>Winning a skin:</b> lowest score takes the hole <b>outright</b>. Any tie for low and nobody wins it.',
+    '<b>The carryover:</b> a tied hole rolls its money into the next one — pots snowball until somebody wins a hole clean. (House option: ties simply kill the skin.)',
+    '<b>Paying out:</b> each skin is collected from <b>every other player</b> — the app settles it pairwise automatically.',
+    'Works with 2, 3 or 4 players, net or gross. The hole screen always shows what the current hole is worth.']))}
   ${ruleCard(img('hammer.png',48),'Hammer','Battle modifier — double or fold',li([
     '<b>Not a game — a weapon:</b> switch it on in <b>Best Ball</b> or <b>Sixes</b> setup and every hole becomes a standoff.',
     '<b>The throw:</b> any time during a hole — even mid-swing drama — either team can throw the hammer. The hole instantly goes double-or-fold.',
@@ -2316,6 +2373,7 @@ function vSetup(){
   const scramble=S.config.game==='scramble';
   const bbb=S.config.game==='bbb';
   const nassau=S.config.game==='nassau';
+  const skins=S.config.game==='skins';
   const rows=actIdx().map(i=>{
     const p=S.players[i];
     const teeOpts=S.course.teeSets.map(t=>`<option value="${t.id}" ${p.tee===t.id?'selected':''}>${esc(t.name)}</option>`).join('');
@@ -2343,7 +2401,7 @@ function vSetup(){
     <div class="stepper"><button onclick="chPt('${k}',-1)">−</button><span class="val num">${P[k]}</span><button onclick="chPt('${k}',1)">+</button></div></div>`;
   const V=S.config.vegas;
   const pairLbl=T=>`${esc(S.players[T[0][0]].name)} &amp; ${esc(S.players[T[0][1]].name)} <span class="muted">vs</span> ${esc(S.players[T[1][0]].name)} &amp; ${esc(S.players[T[1][1]].name)}`;
-  return topbar(`Round setup — ${gameName(S.config.game)}`,nines?'Every hole is worth 9 points: 5 · 3 · 1':vegas?'Low team number takes the difference':stroke?'Straight scoring — net, gross or both':stbl?'Points vs par — highest total wins':quota?'Beat your own number':sixes?'Partners rotate — best ball wins the hole':umbrella?'Six points a hole — sweep for twelve':bbb?'Three taps a hole — bingo, bango, bongo':nassau?'Front nine · back nine · overall — three bets':bestball?'2 v 2 — better ball wins the hole':scramble?'2 v 2 — one ball per team':'Order = tee order on hole 1 (wolf rotation)','gate')+`<main>
+  return topbar(`Round setup — ${gameName(S.config.game)}`,nines?'Every hole is worth 9 points: 5 · 3 · 1':vegas?'Low team number takes the difference':stroke?'Straight scoring — net, gross or both':stbl?'Points vs par — highest total wins':quota?'Beat your own number':sixes?'Partners rotate — best ball wins the hole':umbrella?'Six points a hole — sweep for twelve':bbb?'Three taps a hole — bingo, bango, bongo':nassau?'Front nine · back nine · overall — three bets':skins?'Win the hole outright — ties roll the pot':bestball?'2 v 2 — better ball wins the hole':scramble?'2 v 2 — one ball per team':'Order = tee order on hole 1 (wolf rotation)','gate')+`<main>
   ${rows}
   ${sixes?`<div class="card"><h2>Starting partners</h2>
     ${[[[0,1],[2,3]],[[0,2],[1,3]],[[0,3],[1,2]]].map((T,pi)=>`
@@ -2355,6 +2413,24 @@ function vSetup(){
       <button class="ghost ${S.config.hammer.on?'sel':''}" onclick="set(()=>S.config.hammer.on=!S.config.hammer.on)">${S.config.hammer.on?'On':'Off'}</button></div>
     <div class="tiny mt">Either team can throw the hammer to double what the hole is worth. The other side <b>accepts</b> — the double is live and they take the hammer (only they can re-throw) — or <b>folds</b> and concedes the hole at the old stake. Every hole starts fresh at 1×.</div>
   </div>`:''}
+  ${skins?(()=>{const K=S.config.skins;const vals=skinsHoleVals();const tot=playOrder().reduce((a,h)=>a+vals[h],0);
+  return `<div class="card"><h2>Skins</h2>
+    <div class="row" style="border-top:none"><span class="muted">Players in the round</span>
+      <span class="seg" style="display:inline-flex;gap:6px">
+        ${[2,3,4].map(n=>`<button class="ghost ${NP()===n?'sel':''}" onclick="set(()=>S.config.skins.n=${n})">${n}</button>`).join('')}
+      </span></div>
+    <div class="row"><span class="muted">$ per hole</span>
+      <input type="text" inputmode="decimal" value="${K.amt}" style="width:80px;text-align:right" onchange="set(()=>{S.config.skins.amt=Math.max(0,+this.value||0);if(S.config.skins.per)S.config.skins.per=null;})"></div>
+    <div class="row"><span class="muted">Ties carry the pot</span>
+      <button class="ghost ${K.carry!==false?'sel':''}" onclick="set(()=>S.config.skins.carry=S.config.skins.carry===false?true:false)">${K.carry!==false?'On':'Off'}</button></div>
+    <div class="row"><span class="muted">Custom amount per hole</span>
+      <button class="ghost ${K.per?'sel':''}" onclick="set(()=>S.config.skins.per=S.config.skins.per?null:skinsHoleVals())">${K.per?'On':'Off'}</button></div>
+    ${K.per?`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px">
+      ${playOrder().map(h=>`<div style="display:flex;align-items:center;gap:4px"><span class="tiny" style="width:26px;text-align:right">${h+1}</span>
+        <input type="text" inputmode="decimal" value="${K.per[h]}" style="min-width:0;text-align:right;padding:6px" onchange="set(()=>{S.config.skins.per[${h}]=Math.max(0,+this.value||0);})"></div>`).join('')}
+    </div>`:''}
+    <div class="tiny mt">Lowest score takes the hole <b>outright</b> — any tie ${K.carry!==false?'rolls the pot into the next hole':'kills that skin'}. Each skin is collected from every other player. <b>Total on the course: ${fmtMoney(tot)}</b>.</div>
+  </div>`;})():''}
   ${nassau?`<div class="card"><h2>Nassau</h2>
     <div class="row" style="border-top:none"><span class="muted">Format</span>
       <span class="seg" style="display:inline-flex;gap:6px">
@@ -2549,6 +2625,7 @@ function startRound(){
       :S.round.game==='bestball'?{hammer:!!S.config.hammer.on}
       :S.round.game==='bbb'?{n:S.config.bbb.n}
       :S.round.game==='nassau'?{n:S.config.nassau.n,press:S.config.nassau.press,pairing:S.config.vegas.pairing}
+      :S.round.game==='skins'?{n:S.config.skins.n,amt:S.config.skins.amt,carry:S.config.skins.carry!==false,custom:!!S.config.skins.per}
       :S.round.game==='umbrella'?{pairing:S.config.vegas.pairing}
       :S.round.game==='wolf'?{carry:S.config.carryTies,last2:S.config.last2LastPlace}:{}});
   if(withNearby&&!S.share.on)shareRound();
@@ -2568,7 +2645,7 @@ function prefillNines(h){
 // ----- hole screen -----
 function vHole(){
   if(!S.round.started) return topbar(gameName(),'','home')+`<main><div class="card center">No round in progress.<button class="big mt" onclick="go('home')">Pick a game</button></div></main>`;
-  if(['nines','stroke','bestball','stableford','quota','sixes','umbrella','bbb','nassau'].includes(gameOn())) return vHoleNines();
+  if(['nines','stroke','bestball','stableford','quota','sixes','umbrella','bbb','nassau','skins'].includes(gameOn())) return vHoleNines();
   if(gameOn()==='vegas') return vHoleVegas();
   if(gameOn()==='scramble') return vHoleScramble();
   const h=S.round.cur, hole=S.course.holes[h], rec=S.round.holes[h];
@@ -2678,6 +2755,24 @@ function redoPick(){set(()=>{const r=S.round.holes[S.round.cur];r.mode=null;r.pa
 function chScore(i,d){set(()=>{const r=S.round.holes[S.round.cur];const v=(r.gross[i]??S.course.holes[S.round.cur].par)+d;r.gross[i]=Math.min(15,Math.max(1,v));if(!r.gts)r.gts=[0,0,0,0];r.gts[i]=Date.now();});}
 function setCtp(i){set(()=>{S.round.holes[S.round.cur].ctp=i;});}
 function setBBB(k,i){set(()=>{const rec=S.round.holes[S.round.cur];rec.bbb=Object.assign({},rec.bbb);rec.bbb[k]=i;});}
+// Skins pot card for the hole screen.
+function skinsCardHTML(){
+  const h=S.round.cur,rec=S.round.holes[h];
+  const eng=computeSkins(),L=primaryLens();
+  const vals=skinsHoleVals();
+  const first=i=>esc((S.players[i].name||'').split(' ')[0]);
+  const mine=eng.detail[L].find(d=>d.h===h);
+  let head,note;
+  if(rec.confirmed&&mine){
+    head=mine.won!=null?`hole paid ${fmtMoney(mine.amt)} to ${first(mine.won)}`:(mine.dead?`tied — ${fmtMoney(mine.amt)} off the table`:`tied — pot rides (${fmtMoney(eng.pot[L])} now carrying)`);
+  }else{
+    const riding=eng.pot[L];
+    head=`this hole: <b>${fmtMoney(vals[h]+riding)}</b>${riding>0?` <span class="tiny">(${fmtMoney(vals[h])} + ${fmtMoney(riding)} carried)</span>`:''}`;
+  }
+  const recent=eng.detail[L].filter(d=>d.won!=null).slice(-3).map(d=>`H${d.h+1} ${first(d.won)} ${fmtMoney(d.amt)}`).join(' · ');
+  note=recent?`<div class="tiny mt">Recent skins: ${recent}</div>`:`<div class="tiny mt">Win the hole outright — ${(S.config.skins.carry===false)?'ties kill the skin.':'ties roll the pot forward.'}</div>`;
+  return `<div class="card"><h2>🪙 Skins — ${head}</h2>${note}</div>`;
+}
 // Nassau press: mark/unmark a manual press starting at the current hole.
 function nassauPress(side){set(()=>{const rec=S.round.holes[S.round.cur];
   if(side<0||(rec.press!=null&&rec.press>=0))delete rec.press;else rec.press=side;});}
@@ -2793,6 +2888,7 @@ function vHoleNines(){
   const hamSt=hammerOn()?hamState(rec):null;
   const hamCard=hammerOn()?hammerCardHTML():'';
   const nasCard=gameOn()==='nassau'?nassauCardHTML():'';
+  const skCard=gameOn()==='skins'?skinsCardHTML():'';
   const bbbOn=gameOn()==='bbb';
   const bbbCard=bbbOn?`<div class="card"><h2>3 points on this hole</h2>
     ${[['bingo','\u{1F7E2} Bingo','first ball on the green'],['bango','\u{1F4CD} Bango','closest to the pin once all balls are on'],['bongo','\u26F3 Bongo','first ball in the cup']].map(([k,l,dsc])=>{
@@ -2824,7 +2920,7 @@ function vHoleNines(){
   const body=`<div class="card">
     ${act.some(i=>rec.gross[i]==null)?`<button class="ghost mb" style="width:100%" onclick="set(()=>prefillNines(${h}))">Everyone to par ${hole.par} — adjust from there</button>`:''}
     ${scoreRows}
-    </div>${hamCard}${nasCard}${bbbCard}${ctpRow}${extrasCard}${resultNote}
+    </div>${hamCard}${nasCard}${skCard}${bbbCard}${ctpRow}${extrasCard}${resultNote}
     ${rec.confirmed
       ?`${isReview()?'':`<button class="big" onclick="nextHole()">${posOf(h)<playOrder().length-1?'Next hole →':'Finish round'}</button>`}
         <button class="ghost mt" style="width:100%" onclick="unconfirm()">Edit this hole</button>`
@@ -3023,6 +3119,7 @@ function stViews(){
   if(g!=='nines'&&NP()>=3)v.push(['nines','9’s']);
   if(g!=='vegas'&&four)v.push(['vegas','Vegas']);
   if(g!=='nassau'&&(four||NP()===2))v.push(['nassau','Nassau']);
+  if(g!=='skins'&&NP()>=2)v.push(['skins','Skins']);
   return v;
 }
 function lensScore(rec,i,h,L){const g=rec.gross[i];return g==null?null:(L==='net'?g-dotsOn(i,h):g);}
@@ -3160,6 +3257,11 @@ function vStandings(){
     tables=genericCard('Stroke play',st.ledgers,(v,L,i)=>{if(!thru)return '-';const d=v-st.par[L][i];
       return `${v} <span style="font-size:17px">${d===0?'E':(d>0?'+':'')+d}</span>`;},true,
       `<div class="tiny mt">Total strokes over confirmed holes — lowest wins.</div>`);
+  }else if(view==='skins'){
+    const sk=computeSkins();
+    const potNote=cols.map(L=>sk.pot[L]>0?`<div class="banner carry mt">${lbl(L)}: ${fmtMoney(sk.pot[L])} riding — next outright winner takes it.</div>`:'').join('');
+    tables=genericCard('Skins',sk.ledgers,(v,L,i)=>`${fmtMoney(v)} <span style="font-size:15px">(${sk.count[L][i]})</span>`,false,
+      `<div class="tiny mt">Dollars won (skins taken). Lowest score wins the hole outright; ties ${S.config.skins.carry===false?'kill the skin':'roll the pot'}.</div>`+potNote);
   }else if(view==='nassau'){
     const na=computeNassau(),T=nassauSides();
     const fn=i=>esc((S.players[i].name||'').split(' ')[0]);
@@ -3246,7 +3348,7 @@ function vStandings(){
 function jumpAndGo(h){set(()=>{S.round.cur=h;S.screen='hole';});}
 
 // ----- settlement -----
-const PAIRS_GAMES=['wolf','vegas','bestball','scramble','sixes','umbrella','nassau'];
+const PAIRS_GAMES=['wolf','vegas','bestball','scramble','sixes','umbrella','nassau','skins'];
 function vSettle(){
   if(gameOn()==='quota'){
     const q=computeQuota();
@@ -3286,11 +3388,13 @@ function vSettle(){
   const blocks=activeLenses().map(LL=>{
     const led=all.ledgers[LL];
     const gg=gameOn();
-    const inv=(gg==='stroke'||gg==='scramble')?-1:1, unit=(gg==='stroke'||gg==='scramble')?'stroke':gg==='bestball'?'hole':gg==='nassau'?'bet':'pt';
+    const inv=(gg==='stroke'||gg==='scramble')?-1:1, unit=(gg==='stroke'||gg==='scramble')?'stroke':gg==='bestball'?'hole':gg==='nassau'?'bet':gg==='skins'?'$':'pt';
     const pairs=[];
     for(let a=0;a<act.length;a++)for(let b=a+1;b<act.length;b++){
       const i=act[a],j=act[b],d=(led[i]-led[j])*inv,ad=ptsVal(Math.abs(d));
-      if(d!==0)pairs.push(`${esc(S.players[d>0?j:i].name)} → ${esc(S.players[d>0?i:j].name)}: <b class="num">${ptsTxt(Math.abs(d))} ${unit}${ad===1?'':'s'}</b>${v?` <span class="muted">($${(ad*v).toFixed(2)})</span>`:''}`);
+      if(d!==0)pairs.push(gg==='skins'
+        ?`${esc(S.players[d>0?j:i].name)} → ${esc(S.players[d>0?i:j].name)}: <b class="num">${fmtMoney(Math.abs(d))}</b>`
+        :`${esc(S.players[d>0?j:i].name)} → ${esc(S.players[d>0?i:j].name)}: <b class="num">${ptsTxt(Math.abs(d))} ${unit}${ad===1?'':'s'}</b>${v?` <span class="muted">($${(ad*v).toFixed(2)})</span>`:''}`);
     }
     const order=act.slice().sort((a,b)=>(led[b]-led[a])*inv);
     const leaders=act.filter(i=>led[i]===led[order[0]]);
@@ -3299,14 +3403,14 @@ function vSettle(){
       :leaders.length===act.length?`All square — ${act.length}-way tie`
       :`${leaders.length}-way tie: ${leaders.map(i=>esc(S.players[i].name)).join(', ')}`;
     return `<div class="card"><h2>${LL==='net'?'Net':'Gross'} settlement · thru ${thru}</h2>
-      <div class="center mb"><span class="bigscore num">${ptsTxt(led[order[0]])}</span><div class="muted">${leadTxt}</div></div>
-      <table class="st"><tr><th>Player</th><th class="r">${['stroke','scramble'].includes(gameOn())?'Strokes':gameOn()==='bestball'?'Holes':'Pts'}</th></tr>
-      ${order.map(i=>`<tr><td>${esc(S.players[i].name)}</td><td class="r num" style="font-size:18px">${ptsTxt(led[i])}</td></tr>`).join('')}</table>
+      <div class="center mb"><span class="bigscore num">${gameOn()==='skins'?fmtMoney(led[order[0]]):ptsTxt(led[order[0]])}</span><div class="muted">${leadTxt}</div></div>
+      <table class="st"><tr><th>Player</th><th class="r">${['stroke','scramble'].includes(gameOn())?'Strokes':gameOn()==='bestball'?'Holes':gameOn()==='skins'?'$ won':'Pts'}</th></tr>
+      ${order.map(i=>`<tr><td>${esc(S.players[i].name)}</td><td class="r num" style="font-size:18px">${gameOn()==='skins'?fmtMoney(led[i]):ptsTxt(led[i])}</td></tr>`).join('')}</table>
       ${act.length===1?'<div class="tiny mt">Solo round — nothing to settle. Beat the course.</div>':PAIRS_GAMES.includes(gameOn())?`<div class="mt"><h2>Pairwise (difference method)</h2>${pairs.length?pairs.map(p=>`<div class="row">${p}</div>`).join(''):'<div class="muted">All square.</div>'}</div>`:''}
     </div>`;
   }).join('');
   return topbar('Settlement','','')+`<main>
-    ${PAIRS_GAMES.includes(gameOn())&&actIdx().length>1?`<div class="card"><div class="row"><span class="muted">$ per ${['stroke','scramble'].includes(gameOn())?'stroke':gameOn()==='bestball'?'hole':gameOn()==='nassau'?'bet':'point'} (optional)</span>
+    ${PAIRS_GAMES.includes(gameOn())&&gameOn()!=='skins'&&actIdx().length>1?`<div class="card"><div class="row"><span class="muted">$ per ${['stroke','scramble'].includes(gameOn())?'stroke':gameOn()==='bestball'?'hole':gameOn()==='nassau'?'bet':'point'} (optional)</span>
       <input type="number" step="0.25" min="0" value="${S.round.dollarPerPt||''}" placeholder="0" style="width:90px" onchange="set(()=>S.round.dollarPerPt=+this.value||0)"></div></div>`:''}
     ${blocks}
     <button class="big warn" onclick="newRound()">${armNewRound?'Tap again to clear this round':'Start a new round'}</button>
@@ -3326,7 +3430,7 @@ function newRound(){
 // paint from memory — no service-worker round trips, no background network
 // revalidation per render, no pop-in on flaky signal.
 const ART={};
-['banner.jpg','wolf.png','nine.png','vegas.png','quota.png','sixes.png','umbrella.png','hammer.png','bbb.png','stroke.png','stableford.png','bestball.png','scramble.png','nassau.png'].forEach(f=>{
+['banner.jpg','wolf.png','nine.png','vegas.png','quota.png','sixes.png','umbrella.png','hammer.png','bbb.png','stroke.png','stableford.png','bestball.png','scramble.png','nassau.png','skins.png'].forEach(f=>{
   fetch(f).then(r=>r.ok?r.blob():null).then(b=>{
     if(!b)return;
     ART[f]=URL.createObjectURL(b);
