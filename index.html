@@ -201,7 +201,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1783922356';
+const BUILD='1783923355';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -440,11 +440,13 @@ function applyOp(k,v,defer){
       sentCache[k]=(JSON.stringify(vrest)===mk)?mk:'(merge-pending)';
     }
   }finally{applyingRemote=false;}
-  if(!defer){save();syncPush();render();}
+  // an incoming meta can carry a players array stamped before our slot claim —
+  // re-claim so a simultaneous join can't erase row ownership
+  if(!defer){if(k==='meta')claimMySlot(false);save();syncPush();render();}
 }
 function onStateDoc(doc){
   Object.entries(doc||{}).forEach(([k,v])=>applyOp(k,v,true));
-  claimMySlot();
+  claimMySlot(true);
   save();syncPush();render();
 }
 function syncConnect(){
@@ -472,13 +474,16 @@ function scheduleReconnect(){
 }
 // In a shared round, each phone claims the player slot matching its profile
 // name. Claimed rows are score-locked on OTHER phones (tap ✎ to override).
-function claimMySlot(){
+function claimMySlot(steal){
   if(!S.share.on||!S.me||!S.me.name)return;
   const me=S.me.name.trim().toLowerCase();
   let changed=false;
   S.players.forEach(p=>{
     const match=(p.name||'').trim().toLowerCase()===me;
-    if(match&&p.ownerDev!==devId()){p.ownerDev=devId();changed=true;}
+    // steal-by-name only on join (state doc / round creation) so a replaced
+    // phone can take its row over; later meta heals fill only EMPTY slots —
+    // otherwise two phones sharing a name would fight over the row forever
+    if(match&&p.ownerDev!==devId()&&(steal||!p.ownerDev)){p.ownerDev=devId();changed=true;}
     if(!match&&p.ownerDev===devId()){delete p.ownerDev;changed=true;}
   });
   if(changed){stampChanges();save();syncPush();}
@@ -500,7 +505,7 @@ function shareRound(){
   S.share={on:true,code:makeCode(),creator:true};
   S.shareMetaTs=Date.now();
   S.round.holes.forEach(r=>{if(!r._ts)r._ts=Date.now();});
-  claimMySlot();
+  claimMySlot(true);
   primeCaches(false);
   save();syncConnect();render();
 }
