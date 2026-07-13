@@ -201,7 +201,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1783923355';
+const BUILD='1783923868';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -607,7 +607,11 @@ function saveEditMe(){
   sendHello();
 }
 function onlineList(){
-  return nearby.map(p=>({...p,near:!!(myCoords&&p.lat!=null&&kmBetween(myCoords[0],myCoords[1],p.lat,p.lon)<5)}))
+  // never show yourself — another copy of the app (Safari tab vs home-screen
+  // icon have separate storage on iOS) broadcasts your name under its own devId
+  const me=(S.me&&S.me.name||'').trim().toLowerCase();
+  return nearby.filter(p=>!me||(p.name||'').trim().toLowerCase()!==me)
+    .map(p=>({...p,near:!!(myCoords&&p.lat!=null&&kmBetween(myCoords[0],myCoords[1],p.lat,p.lon)<5)}))
     .sort((a,b)=>(b.near?1:0)-(a.near?1:0));
 }
 let addingPlayer=false,editingPlayer=null,scanOpen=false,scanShown=[];
