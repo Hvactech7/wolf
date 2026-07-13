@@ -201,7 +201,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1783919800';
+const BUILD='1783920899';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -264,6 +264,7 @@ function load(){
       if(!s.share)s.share={on:false,code:null};
       if(!s.me)s.me={name:'',index:10};
       if(!s.theme)s.theme='dark';
+      if(s.autoBackup==null)s.autoBackup=true;
       if(!s.config.game)s.config.game='wolf';
       if(!s.config.nines)s.config.nines={n:4,blitz:false,ctp:true};
       if(!s.config.vegas)s.config.vegas={pairing:0,rotate:'none',flip:true,ctp:false};
@@ -315,7 +316,7 @@ function load(){
       return s;
     }}
   }catch(e){}
-  return {screen:'home',course:defaultCourse(),courses:builtinCourses(),playerLib:[],config:defaultConfig(),players:defaultPlayers(),round:blankRound(),share:{on:false,code:null},me:{name:'',index:10},theme:'dark',history:[]};
+  return {screen:'home',course:defaultCourse(),courses:builtinCourses(),playerLib:[],config:defaultConfig(),players:defaultPlayers(),round:blankRound(),share:{on:false,code:null},me:{name:'',index:10},theme:'dark',history:[],autoBackup:true};
 }
 function syncLib(){
   if(!S.courses)return;
@@ -323,7 +324,43 @@ function syncLib(){
   const i=S.courses.findIndex(c=>c.id===S.course.id);
   if(i>=0)S.courses[i]=clone(S.course); else S.courses.push(clone(S.course));
 }
-function save(){try{syncLib();localStorage.setItem(LS_KEY,JSON.stringify(S));}catch(e){}}
+// Auto-backup: whenever the library-ish state (profile, players, courses,
+// round history) actually changes, quietly push a backup to the relay a few
+// seconds later. Fingerprint persists across sessions so unchanged state
+// never re-uploads; failures leave the fingerprint stale so the next change
+// (or next app open) retries. Scores mid-round don't touch the fingerprint.
+let abTimer=null;
+let abFp=localStorage.getItem('btAbFp')||'';
+function abStamp(fp){abFp=fp;try{localStorage.setItem('btAbFp',fp);localStorage.setItem('btAbAt',String(Date.now()));}catch(e){}}
+function abPayload(){
+  const courses=S.courses.map(c=>{const {geo,...rest}=c;return rest;});
+  return {me:S.me,playerLib:S.playerLib,courses,history:S.history||[]};
+}
+function autoBackupCheck(){
+  if(!S.autoBackup)return;
+  const em=(localStorage.getItem('wolfBackupEmail')||'').trim();
+  if(!em||!S.playerLib.length)return;   // never auto-save an empty library over a good backup
+  const data=abPayload();
+  const fp=JSON.stringify([data.me,data.playerLib,data.courses,data.history.map(h=>h.id)]);
+  if(fp===abFp)return;
+  clearTimeout(abTimer);
+  abTimer=setTimeout(async()=>{
+    try{
+      const r=await relayBackup({op:'save',email:em,data:abPayload(),quiet:true});
+      if(r&&r.ok){abStamp(fp);if(S.screen==='players'||S.screen==='courses')render();}
+    }catch(e){}
+  },8000);
+}
+function toggleAutoBackup(){set(()=>{S.autoBackup=!S.autoBackup;});}
+function agoTxt(ts){
+  if(!ts)return 'never';
+  const m=Math.round((Date.now()-ts)/60000);
+  if(m<1)return 'just now';
+  if(m<60)return m+' min ago';
+  if(m<48*60)return Math.round(m/60)+' h ago';
+  return new Date(ts).toLocaleDateString();
+}
+function save(){try{syncLib();localStorage.setItem(LS_KEY,JSON.stringify(S));}catch(e){} autoBackupCheck();}
 function set(fn){fn();stampChanges();save();syncPush();render();}
 function applyTheme(){
   document.documentElement.classList.toggle('light',S.theme==='light');
@@ -526,22 +563,29 @@ function grabCoords(){
     ()=>{},{timeout:8000,maximumAge:300000});
 }
 function saveMe(){
-  const n=document.getElementById('meName'),x=document.getElementById('meIdx');
+  const n=document.getElementById('meName'),x=document.getElementById('meIdx'),e=document.getElementById('meEmail');
   const name=(n&&n.value||'').trim();
   if(!name)return;
+  const em=(e&&e.value||'').trim();
+  if(em&&!/^\S+@\S+\.\S+$/.test(em)){if(e)e.style.borderColor='var(--red)';return;}
+  if(em)try{localStorage.setItem('wolfBackupEmail',em);}catch(x2){}
   set(()=>{
     S.me={name,index:+((x&&x.value)||10)||10};
     upsertLib({name,index:S.me.index,tee:S.players[0]?S.players[0].tee:undefined,libId:null});
   });
+  stat('profile',{name,email:em||localStorage.getItem('wolfBackupEmail')||''});
   sendHello();
 }
 let editingMe=false;
 function editMe(){editingMe=true;addingPlayer=false;editingPlayer=null;render();}
 function cancelEditMe(){editingMe=false;render();}
 function saveEditMe(){
-  const n=document.getElementById('meEName'),x=document.getElementById('meEIdx');
+  const n=document.getElementById('meEName'),x=document.getElementById('meEIdx'),e=document.getElementById('meEEmail');
   const name=(n&&n.value||'').trim();
   if(!name){editingMe=false;render();return;}
+  const em=(e&&e.value||'').trim();
+  if(em&&!/^\S+@\S+\.\S+$/.test(em)){if(e)e.style.borderColor='var(--red)';return;}
+  if(em)try{localStorage.setItem('wolfBackupEmail',em);}catch(x2){}
   const old=S.me.name;
   editingMe=false;
   set(()=>{
@@ -593,8 +637,13 @@ async function doBackup(){
   backupUI.msg='Backing up…';render();
   try{
     syncLib();
-    const r=await relayBackup({op:'save',email:em,data:{me:S.me,playerLib:S.playerLib,courses:S.courses}});
-    backupUI.msg=r.ok?`✓ ${S.playerLib.length} player${S.playerLib.length===1?'':'s'} + ${S.courses.length} course${S.courses.length===1?'':'s'} safely backed up${r.emailed?' — confirmation emailed':''}.`:(r.error||'Backup failed.');
+    // course geo (satellite hole maps) re-downloads on-site — strip it so the
+    // backup stays small enough for the relay even with round history aboard
+    const courses=S.courses.map(c=>{const {geo,...rest}=c;return rest;});
+    const r=await relayBackup({op:'save',email:em,data:{me:S.me,playerLib:S.playerLib,courses,history:S.history||[]}});
+    if(r&&r.ok){const d=abPayload();abStamp(JSON.stringify([d.me,d.playerLib,d.courses,d.history.map(h=>h.id)]));}
+    const nh=(S.history||[]).length;
+    backupUI.msg=r.ok?`✓ ${S.playerLib.length} player${S.playerLib.length===1?'':'s'} + ${S.courses.length} course${S.courses.length===1?'':'s'}${nh?` + ${nh} round${nh===1?'':'s'}`:''} safely backed up${r.emailed?' — confirmation emailed':''}.`:(r.error||'Backup failed.');
   }catch(e){backupUI.msg='Could not connect — check your signal and try again.';}
   render();
 }
@@ -629,12 +678,20 @@ async function doRestore(){
         (r.data.courses||[]).forEach(c=>{
           if(!c||!c.id||!c.holes)return;
           const i=S.courses.findIndex(x=>x.id===c.id);
-          if(i>=0)S.courses[i]=c;else{S.courses.push(c);cAdded++;}
+          if(i>=0){if(S.courses[i].geo&&!c.geo)c.geo=S.courses[i].geo;S.courses[i]=c;}
+          else{S.courses.push(c);cAdded++;}
         });
         backupUI._cAdded=cAdded;
+        let hAdded=0;
+        (r.data.history||[]).forEach(e=>{
+          if(!e||!e.id)return;
+          if(!(S.history||[]).some(x=>x.id===e.id)){(S.history=S.history||[]).push(e);hAdded++;}
+        });
+        if(hAdded){S.history.sort((a,b)=>(b.endedAt||0)-(a.endedAt||0));S.history=S.history.slice(0,12);}
+        backupUI._hAdded=hAdded;
       });
       backupUI.stage=0;
-      backupUI.msg=`✓ Restored — ${added} player${added===1?'':'s'} added, ${updated} updated${backupUI._cAdded?`, ${backupUI._cAdded} course${backupUI._cAdded===1?'':'s'} added`:''}.`;
+      backupUI.msg=`✓ Restored — ${added} player${added===1?'':'s'} added, ${updated} updated${backupUI._cAdded?`, ${backupUI._cAdded} course${backupUI._cAdded===1?'':'s'} added`:''}${backupUI._hAdded?`, ${backupUI._hAdded} round${backupUI._hAdded===1?'':'s'} recovered`:''}.`;
     }else backupUI.msg=r.error||'Restore failed.';
   }catch(e){backupUI.msg='Could not connect — check your signal and try again.';}
   render();
@@ -1438,6 +1495,8 @@ function vHome(){
       <div><div class="tiny">Your name</div><input type="text" id="meName" onfocus="tapClear(this)"></div>
       <div><div class="tiny">Handicap index</div><input type="text" inputmode="decimal" id="meIdx" placeholder="10.0" onfocus="tapClear(this)"></div>
     </div>
+    <div class="mt"><div class="tiny">Email</div><input type="text" inputmode="email" autocapitalize="off" id="meEmail" placeholder="you@email.com" value="${esc(localStorage.getItem('wolfBackupEmail')||'')}">
+      <div class="tiny mt">Your players, courses &amp; round history back up automatically — and you can restore them on any phone.</div></div>
     <button class="big mt" onclick="saveMe()">Save profile</button>
   </div>`:''}
   ${!S.share.on?invites.map(inv=>`<div class="card" style="border-color:var(--amber);background:#fffcf7">
@@ -1562,6 +1621,8 @@ function vGate(){
       <div><div class="tiny">Your name</div><input type="text" id="meName" onfocus="tapClear(this)"></div>
       <div><div class="tiny">Handicap index</div><input type="text" inputmode="decimal" id="meIdx" placeholder="10.0" onfocus="tapClear(this)"></div>
     </div>
+    <div class="mt"><div class="tiny">Email</div><input type="text" inputmode="email" autocapitalize="off" id="meEmail" placeholder="you@email.com" value="${esc(localStorage.getItem('wolfBackupEmail')||'')}">
+      <div class="tiny mt">Backs up your players, courses &amp; rounds automatically.</div></div>
     <button class="big mt" onclick="saveMe()">Save profile</button></div>`:''}
   ${invites.length?invites.map(inv=>`<div class="card" style="border-color:var(--amber)">
     <h2 style="color:var(--amber)">⚔️ Join this group</h2>
@@ -1697,8 +1758,16 @@ function vRules(){
   </main>`;
 }
 function backupBlockHTML(){
-  return `${backupUI.mode?`
-      <div class="tiny mt mb" style="border-top:1px solid var(--line);padding-top:10px">${backupUI.mode==='backup'?'Backs up your players AND courses — restore them on any phone later.':'Restore your backed-up players and courses.'}</div>
+  const abEmail=(localStorage.getItem('wolfBackupEmail')||'').trim();
+  const abAt=+localStorage.getItem('btAbAt')||0;
+  return `<div class="row" style="border-top:1px solid var(--line);margin-top:12px"><span class="muted">☁ Auto-backup</span>
+      <button class="ghost ${S.autoBackup?'sel':''}" onclick="toggleAutoBackup()">${S.autoBackup?'On':'Off'}</button></div>
+    <div class="tiny mb">${S.autoBackup
+      ?(abEmail?`Players, courses &amp; round history save themselves whenever they change · last backup ${agoTxt(abAt)}.`
+        :'Tap <b>Back up</b> once to set your email — after that everything saves itself automatically.')
+      :'Off — only manual backups run.'}</div>
+  ${backupUI.mode?`
+      <div class="tiny mt mb" style="border-top:1px solid var(--line);padding-top:10px">${backupUI.mode==='backup'?'Backs up your players, courses AND round history — restore them on any phone later.':'Restore your backed-up players, courses and round history.'}</div>
       <input id="bkEmail" type="text" inputmode="email" autocapitalize="off" placeholder="you@email.com" value="${esc(localStorage.getItem('wolfBackupEmail')||'')}">
       ${backupUI.mode==='backup'
         ?`<div class="mt" style="display:flex;gap:6px">
@@ -1766,9 +1835,12 @@ function vPlayers(){
   <div class="card"><h2>Players</h2>
     ${S.me.name?(editingMe?`
       <div class="row" style="background:var(--green-lt);border-radius:10px;padding:9px 12px;border-top:none;margin:2px 0">
-        <div class="grid2" style="flex:1">
-          <div><div class="tiny">Your name</div><input id="meEName" type="text" value="${esc(S.me.name)}"></div>
-          <div><div class="tiny">Handicap index</div><input id="meEIdx" type="text" inputmode="decimal" value="${S.me.index}"></div>
+        <div style="flex:1">
+          <div class="grid2">
+            <div><div class="tiny">Your name</div><input id="meEName" type="text" value="${esc(S.me.name)}"></div>
+            <div><div class="tiny">Handicap index</div><input id="meEIdx" type="text" inputmode="decimal" value="${S.me.index}"></div>
+          </div>
+          <div class="mt"><div class="tiny">Email — backups &amp; restore</div><input id="meEEmail" type="text" inputmode="email" autocapitalize="off" placeholder="you@email.com" value="${esc(localStorage.getItem('wolfBackupEmail')||'')}"></div>
         </div>
       </div>
       <div class="row" style="border-top:none">
