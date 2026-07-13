@@ -203,7 +203,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1783973457';
+const BUILD='1783973837';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -3326,7 +3326,7 @@ function newRound(){
 // paint from memory — no service-worker round trips, no background network
 // revalidation per render, no pop-in on flaky signal.
 const ART={};
-['banner.jpg','wolf.png','nine.png','vegas.png','quota.png','sixes.png','umbrella.png','hammer.png','bbb.png','stroke.png','stableford.png','bestball.png','scramble.png','nassau.png','crest.jpg'].forEach(f=>{
+['banner.jpg','wolf.png','nine.png','vegas.png','quota.png','sixes.png','umbrella.png','hammer.png','bbb.png','stroke.png','stableford.png','bestball.png','scramble.png','nassau.png'].forEach(f=>{
   fetch(f).then(r=>r.ok?r.blob():null).then(b=>{
     if(!b)return;
     ART[f]=URL.createObjectURL(b);
