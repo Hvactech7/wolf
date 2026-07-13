@@ -201,7 +201,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1783923868';
+const BUILD='1783924191';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -1596,7 +1596,7 @@ function vHome(){
       <button class="ghost ${S.theme!=='light'?'sel':''}" style="white-space:nowrap" onclick="setTheme('dark')">🌙 Dark</button>
     </span>
   </div>
-  ${!S.share.on?`<details class="card" style="padding:10px 14px"><summary class="tiny" style="cursor:pointer;color:var(--ink3)">Join a shared round with a code (backup)</summary>
+  ${!S.share.on?`<details class="card" style="padding:10px 14px"><summary class="tiny" style="cursor:pointer;color:var(--ink3)">Join a shared round with a code</summary>
     <div class="row" style="border:none">
       <input type="text" id="joincode" placeholder="ABCDE" maxlength="8" autocapitalize="characters" style="width:46%;text-transform:uppercase;font-family:Rajdhani,sans-serif;font-size:20px;letter-spacing:3px">
       <button class="ghost sel" style="flex:1" onclick="joinRound()">Join</button>
