@@ -33,6 +33,23 @@ background:linear-gradient(180deg,#5cb2ff,#2f7fd4);border:2px solid var(--elec-d
 padding:14px;text-decoration:none;box-shadow:4px 4px 0 var(--elec-dk);margin:22px 0 8px}
 .all{display:block;text-align:center;color:var(--elec);font-size:14px;margin-top:14px}
 </style>
+<meta name="robots" content="noindex, nofollow">
+<style>
+html.gated body>*:not(#btgate){display:none!important}
+#btgate{display:none;position:fixed;inset:0;z-index:2147483647;background:#0f1522;background-image:radial-gradient(ellipse 90% 50% at 50% -10%,rgba(74,168,255,.12),transparent);flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center;font-family:Inter,-apple-system,sans-serif}
+html.gated #btgate{display:flex}
+#btgate .sw{font-size:52px}
+#btgate .nm{font-family:Rajdhani,Inter,sans-serif;font-weight:700;font-size:36px;letter-spacing:2px;color:#c9a227}
+#btgate .sb{color:#a9b0c0;font-size:13px;letter-spacing:2.5px;text-transform:uppercase;margin-bottom:14px}
+#btgate input{background:#1b2433;border:2px solid #2a3550;border-radius:10px;color:#e8e4d8;font-size:17px;padding:12px 16px;width:min(260px,80vw);text-align:center;outline:none}
+#btgate input:focus{border-color:#4aa8ff}
+#btgate button{font-family:Rajdhani,Inter,sans-serif;font-weight:700;font-size:19px;letter-spacing:1px;color:#241d08;background:linear-gradient(180deg,#e0bb45,#a8851e);border:2px solid #8a6f1c;border-radius:10px;padding:11px 42px;box-shadow:3px 3px 0 #8a6f1c;cursor:pointer;margin-top:4px}
+#btgate button:active{transform:translate(2px,2px);box-shadow:1px 1px 0 #8a6f1c}
+#btgmsg{color:#ff9b3d;font-size:14px;min-height:18px}
+#btgate.shake{animation:btshake .35s}
+@keyframes btshake{20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+</style>
+<script>if(localStorage.getItem('btGate')!=='open')document.documentElement.classList.add('gated');</script>
 </head>
 <body>
 <div class="wrap">
@@ -48,7 +65,33 @@ padding:14px;text-decoration:none;box-shadow:4px 4px 0 var(--elec-dk);margin:22p
   <div class="card"><h2>In Battle Tees</h2><p>Every point value is adjustable in setup — partner wins, lone wins, blind wins, and what the field earns for taking the Wolf down. Closest-to-pin on par 3s is worth a bonus point (ball must be on the green).</p><p>The app tracks the rotation, the picks, the carryovers, and the running points — and the Settle screen turns points into exact payouts.</p></div>
   
   <span class="cta" style="cursor:default;filter:saturate(.55) brightness(.85)">⚔️ &nbsp;Wolf — in Battle Tees, private beta · public launch soon</span>
-  <a class="all" href="/welcome/">Battle Tees — twelve golf games, one scorecard, settled before the parking lot</a>
+  <a class="all" href="/welcome/">Battle Tees — thirteen golf games, one scorecard, settled before the parking lot</a>
 </div>
+<div id="btgate">
+  <div class="sw">⚔️</div>
+  <div class="nm">BATTLE TEES</div>
+  <div class="sb">Private beta · invite only</div>
+  <input id="btgpw" type="password" placeholder="passcode" autocomplete="off" autocapitalize="none">
+  <button id="btgbtn">Enter</button>
+  <div id="btgmsg"></div>
+</div>
+<script>
+(function(){
+if(!document.getElementById('btgate'))return;
+var H='87157500783e10d780146949468699ecdd372fa7996a679beeba0b7dcc37f8c7';
+function go(){
+  var v=(document.getElementById('btgpw').value||'').trim().toLowerCase();
+  if(!v)return;
+  crypto.subtle.digest('SHA-256',new TextEncoder().encode(v)).then(function(b){
+    var h=Array.prototype.map.call(new Uint8Array(b),function(x){return x.toString(16).padStart(2,'0')}).join('');
+    if(h===H){localStorage.setItem('btGate','open');document.documentElement.classList.remove('gated');}
+    else{document.getElementById('btgmsg').textContent='Not it — ask the commissioner.';
+      var g=document.getElementById('btgate');g.classList.remove('shake');void g.offsetWidth;g.classList.add('shake');}
+  });
+}
+document.getElementById('btgbtn').addEventListener('click',go);
+document.getElementById('btgpw').addEventListener('keydown',function(e){if(e.key==='Enter')go()});
+})();
+</script>
 </body>
 </html>
