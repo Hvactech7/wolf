@@ -237,7 +237,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784098773';
+const BUILD='1784103343';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -1811,7 +1811,7 @@ function vHome(){
   ${inRound?`<div class="card"><h2>${S.round.reopened?'Past round open':'Round in progress'}</h2>
     <div class="muted mb">${gameName()} · ${esc(S.course.name)} · thru ${S.round.holes.filter(r=>r.confirmed).length} holes</div>
     <button class="big" onclick="go('hole')">Continue round</button>
-    <button class="big danger mt" onclick="endRound()">End round now</button>
+    <button class="big danger mt" onclick="endRoundConfirm()">${armEndRound?'⚠️ Tap again to confirm':'End round now'}</button>
     ${S.share.on?`<div class="row mt" style="border-top:1px solid var(--line)">
         <span class="tiny">Live sync · <b class="num" style="font-size:16px;letter-spacing:2px">${esc(S.share.code)}</b> ${sockOpen?'<span style="color:var(--elec)">● connected</span>':'<span style="color:var(--red)">○ reconnecting…</span>'}</span>
         <button class="ghost danger" onclick="leaveShare()">Leave</button></div>`
@@ -2045,6 +2045,7 @@ function vHistory(){
           <div class="tiny">${when} · thru ${e.thru} · ${e.mins!=null?e.mins+' min':''}${e.code?' · shared '+esc(e.code):''}</div>
           <div class="tiny">${(e.players||[]).map(esc).join(' · ')}</div></div>
         <span style="display:flex;gap:6px;flex:none">
+          <button class="ghost" onclick="resumeRound('${e.id}')">▶ Continue</button>
           <button class="ghost sel" onclick="reopenRound('${e.id}')">Open</button>
           <button class="ghost danger" onclick="delHist('${e.id}')">${armDelHist===e.id?'Delete?':'✕'}</button>
         </span></div>
@@ -2130,7 +2131,7 @@ function vRules(){
     'Works with 2, 3 or 4 players, net or gross. The hole screen always shows what the current hole is worth.']))}
   ${ruleCard(img('hammer.png',48),'Hammer','Battle modifier — double or fold',li([
     '<b>Not a game — a weapon:</b> switch it on in <b>Best Ball</b> or <b>Sixes</b> setup and every hole becomes a standoff.',
-    '<b>The throw:</b> any time during a hole — even mid-swing drama — either team can throw the hammer. The hole instantly goes double-or-fold.',
+    '<b>The throw:</b> any time during a hole, either team can throw the hammer — but only until a player takes their grip and addresses the ball. Once someone is at address, the hammer stays down until that shot is struck. When it flies, the hole instantly goes double-or-fold.',
     '<b>Accept:</b> the double is live and the hammer changes hands — only the accepting team can throw the next one. Re-hammers stack: 2×, 4×, 8×…',
     '<b>Fold:</b> concede the hole at the old stake and move on. Cheap insurance or slow bleed — you decide.',
     'Every hole starts fresh at 1× with the hammer in the air. Throw it when your opponent is in the trees.']))}
@@ -2294,6 +2295,12 @@ function archiveRound(){
 }
 function isReview(){return !!(S.round.started&&S.round.reopened);}
 function closeReview(){endRound();S.screen='history';save();render();}
+let armEndRound=false;
+function endRoundConfirm(){
+  if(!armEndRound){armEndRound=true;render();setTimeout(()=>{if(armEndRound){armEndRound=false;render();}},4000);return;}
+  armEndRound=false;
+  endRound();
+}
 function endRound(){
   if(!S.round.started){S.screen='home';save();render();return;}
   if(!S.round.myEndedAt)S.round.myEndedAt=Date.now();  // clock stops once, forever
@@ -2306,6 +2313,21 @@ function endRound(){
   S.round=blankRound();S.screen='home';stView=null;
   save();
   if(wasShared)leaveShare();else render();
+}
+// Resume a past round for real: fully live (not review), with the clock
+// continuing from where it stopped — the break doesn't count against pace.
+function resumeRound(id){
+  const e=(S.history||[]).find(x=>x.id===id);if(!e)return;
+  S.round=clone(e.round);S.round.started=true;delete S.round.reopened;
+  S.config=clone(e.config);
+  if(e.playersSnap)S.players=clone(e.playersSnap);
+  const c=S.courses.find(x=>x.id===e.courseId);if(c)S.course=clone(c);
+  const elapsed=(S.round.myEndedAt&&S.round.myStartedAt)?(S.round.myEndedAt-S.round.myStartedAt):(e.mins!=null?e.mins*60000:0);
+  S.round.myStartedAt=Date.now()-elapsed;
+  delete S.round.myEndedAt;
+  S.screen='hole';stView=null;
+  if(e.code){S.share={on:true,code:e.code,creator:false};S.shareMetaTs=0;S.round.holes.forEach(r=>{r._ts=r._ts||0;});primeCaches(false);save();syncConnect();render();}
+  else{S.share={on:false,code:null};save();render();}
 }
 function reopenRound(id){
   const e=(S.history||[]).find(x=>x.id===id);if(!e)return;
