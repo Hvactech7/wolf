@@ -98,7 +98,11 @@
   .fx-wolfwin .splash-head{text-shadow:0 0 18px var(--sc);animation:headGlow 1.2s ease-in-out .3s}
   @keyframes headGlow{0%,100%{opacity:1}50%{opacity:.75;letter-spacing:1px}}
   .fx-wolfwin img,.fx-wolfcage img{height:150px}
-  .fx-wolfcage img{animation:cageSlam .55s cubic-bezier(.55,0,.35,1.35) .35s both}
+  /* dark dungeon vignette behind the cage so the art reads on light AND dark cards */
+  .fx-wolfcage .cagewrap::before{content:'';position:absolute;inset:-4px -22px;border-radius:50%;z-index:0;
+    background:radial-gradient(closest-side,rgba(9,15,28,.94) 40%,rgba(30,80,150,.45) 72%,transparent)}
+  .fx-wolfcage img{position:relative;z-index:1;filter:drop-shadow(0 0 14px rgba(96,178,255,.65));
+    animation:cageSlam .55s cubic-bezier(.55,0,.35,1.35) .35s both}
   @keyframes cageSlam{0%{transform:translateY(-140%);opacity:0}55%{transform:translateY(5%);opacity:1}75%{transform:translateY(-2%)}100%{transform:translateY(0)}}
   .fx-wolfcage.splash-card,.splash-card.fx-wolfcage{animation:spPop .38s cubic-bezier(.2,1.4,.4,1),cageShake .35s .88s}
   @keyframes cageShake{0%,100%{transform:translate(0,0)}20%{transform:translate(-5px,2px)}45%{transform:translate(5px,-2px)}70%{transform:translate(-3px,1px)}}
@@ -233,7 +237,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784097427';
+const BUILD='1784098773';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
