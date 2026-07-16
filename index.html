@@ -245,7 +245,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784222902';
+const BUILD='1784224391';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -1498,7 +1498,7 @@ function vMap(){
 // Courses with professionally-mapped geodata hosted on battletees.app
 // (Golfbert-sourced: fairway-bent hole lines, greens, bunkers, water).
 // Fetched once, cached in course geo like OSM data — no runtime API calls.
-const HOSTED_GEO={'rancho-solano':'geo/rancho-solano.json'};
+const HOSTED_GEO={'rancho-solano':'geo/rancho-solano.json?v=2'};
 async function ensureCourseGeo(){
   const hostedUrl=HOSTED_GEO[S.course.id];
   if(hostedUrl){
