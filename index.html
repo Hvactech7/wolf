@@ -246,7 +246,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784265161';
+const BUILD='1784266848';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -1431,6 +1431,14 @@ function computeGame(){const g=gameOn();
 
 // ---------- hole map: satellite view + GPS distances (Phase 1) ----------
 let mapHole=0,LMAP=null,mapWatch=null,mapMarks={},leafletP=null;
+let lSpine=null,gmSpine=null,showSpine=(localStorage.btSpine==='on');
+function toggleSpine(){
+  showSpine=!showSpine;localStorage.btSpine=showSpine?'on':'off';
+  if(LMAP&&lSpine)lSpine.forEach(l=>showSpine?l.addTo(LMAP):LMAP.removeLayer(l));
+  if(typeof GMAP!=='undefined'&&GMAP&&gmSpine)gmSpine.setMap(showSpine?GMAP:null);
+  const b=document.getElementById('spinebtn');
+  if(b){b.style.opacity=showSpine?'1':'.45';b.style.borderColor=showSpine?'var(--green)':'';}
+}
 function loadLeaflet(){
   if(window.L&&L.Map.prototype.setBearing)return Promise.resolve();
   if(leafletP)return leafletP;
@@ -1479,7 +1487,7 @@ function mapNext(){mapHole=(mapHole+1)%18;render();}
 function teardownMap(){
   if(mapWatch!=null&&navigator.geolocation){navigator.geolocation.clearWatch(mapWatch);mapWatch=null;}
   if(LMAP){try{LMAP.remove();}catch(e){}LMAP=null;}
-  mapMarks={};
+  mapMarks={};lSpine=null;gmSpine=null;
 }
 function vMap(){
   const hole=S.course.holes[mapHole]||{par:4,si:0};
@@ -1492,6 +1500,9 @@ function vMap(){
         <div class="num" id="fmb" style="font-size:22px">—</div>
         <div class="tiny" id="fmbsub">loading…</div>
       </div>
+      <button id="spinebtn" class="ghost" onclick="toggleSpine()" style="width:40px;height:40px;padding:0;display:flex;align-items:center;justify-content:center;opacity:${showSpine?'1':'.45'};border-color:${showSpine?'var(--green)':''}">
+        <svg width="20" height="26" viewBox="0 0 20 26" fill="none"><path d="M12 2 C 5 9, 15 17, 8 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="4 3"/></svg>
+      </button>
       <button class="ghost" onclick="mapNext()">▶</button>
     </div>
   </div>`;
@@ -1605,14 +1616,12 @@ function initGoogleHoleMap(el,geo,geoErr){
   const lbl=t=>({text:t,className:'maplbl',color:'#fff',fontSize:'12px',fontWeight:'700'});
   let greenC=null,greenPoly=null;
   if(geo&&geo.path&&geo.path.length>1){
-    gmOverlays.push(new gm.Polyline({path:geo.path.map(P),strokeOpacity:0,clickable:false,
-      icons:[{icon:{path:'M 0,-1 0,1',strokeOpacity:.95,strokeColor:'#ffffff',scale:2.2},offset:'0',repeat:'14px'}],map:GMAP}));
+    gmSpine=new gm.Polyline({path:geo.path.map(P),strokeOpacity:0,clickable:false,
+      icons:[{icon:{path:'M 0,-1 0,1',strokeOpacity:.95,strokeColor:'#ffffff',scale:2.2},offset:'0',repeat:'14px'}],map:showSpine?GMAP:null});
+    gmOverlays.push(gmSpine);
     const pathEnd=geo.path[geo.path.length-1];
-    (geo.water||[]).forEach(r=>gmOverlays.push(new gm.Polygon({paths:r.map(P),strokeWeight:0,fillColor:'#3f83c4',fillOpacity:.35,clickable:false,map:GMAP})));
-    (geo.sand||[]).forEach(r=>gmOverlays.push(new gm.Polygon({paths:r.map(P),strokeWeight:0,fillColor:'#ecdca6',fillOpacity:.45,clickable:false,map:GMAP})));
     if(geo.green&&geo.green.length>2){
       greenPoly=geo.green;greenC=centroidOf(geo.green);
-      gmOverlays.push(new gm.Polygon({paths:geo.green.map(P),strokeWeight:0,fillColor:'#7fd49a',fillOpacity:.18,clickable:false,map:GMAP}));
     }else greenC=pathEnd;
     dot(geo.path[0],'#2b86ec');
     var gmGreen=dot(greenC,'#ffd75e');
@@ -1705,14 +1714,13 @@ async function initHoleMap(){
     // hole line: spline-smoothed through the waypoints, white dashes over a
     // soft dark casing so it stays readable on light fairways
     const smooth=splinePath(geo.path);
-    L.polyline(smooth,{color:'#0a1220',weight:5.5,opacity:.45}).addTo(LMAP);
-    L.polyline(smooth,{color:'#ffffff',weight:2.5,opacity:.95,dashArray:'7 7'}).addTo(LMAP);
+    lSpine=[L.polyline(smooth,{color:'#0a1220',weight:5.5,opacity:.45}),L.polyline(smooth,{color:'#ffffff',weight:2.5,opacity:.95,dashArray:'7 7'})];
+    if(showSpine)lSpine.forEach(l=>l.addTo(LMAP));
     const pathEnd=geo.path[geo.path.length-1];
-    (geo.water||[]).forEach(r=>L.polygon(r,{stroke:false,fillColor:'#3f83c4',fillOpacity:.35}).addTo(LMAP));
-    (geo.sand||[]).forEach(r=>L.polygon(r,{stroke:false,fillColor:'#ecdca6',fillOpacity:.45}).addTo(LMAP));
+    // no hazard/green overlays — the satellite imagery shows them natively
+    // (green polygon still powers F/M/B + centroid math below)
     if(geo.green&&geo.green.length>2){
       greenPoly=geo.green;greenC=centroidOf(geo.green);
-      L.polygon(geo.green,{stroke:false,fillColor:'#7fd49a',fillOpacity:.18}).addTo(LMAP);
     }else greenC=pathEnd;
     L.circleMarker(geo.path[0],{radius:6,color:'#fff',weight:2,fillColor:'#2b86ec',fillOpacity:1}).addTo(LMAP);
     var lGreen=L.circleMarker(greenC,{radius:6,color:'#fff',weight:2,fillColor:'#ffd75e',fillOpacity:1}).addTo(LMAP);
@@ -1748,61 +1756,79 @@ async function initHoleMap(){
     mapMarks={greenC:null,greenPoly:null,ref:c,mePos:null};
     const s2=sub();if(s2)s2.textContent=geoErr||'Hole lines not mapped here — rangefinder still works.';
   }
-  let lMe=null,lTap=null,lTapLine=null,lTapCase=null;
+  let lMe=null,lTaps=[],lTapLine=null,lTapCase=null;
+  const tapLL=m=>{const p=m.getLatLng();return [p.lat,p.lng];};
   const refreshTapLine=()=>{
-    if(!lTap)return;
-    const t=[lTap.getLatLng().lat,lTap.getLatLng().lng];
+    if(!lTaps.length)return;
     const from=mapMarks.mePos||mapMarks.ref;
-    const pts=[from,t,mapMarks.greenC].filter(Boolean);
+    // keep spots ordered along the hole so the line never zigzags backward
+    if(from&&lTaps.length>1)lTaps.sort((a,b)=>mDist(from,tapLL(a))-mDist(from,tapLL(b)));
+    const ts=lTaps.map(tapLL);
+    const pts=[from,...ts,mapMarks.greenC].filter(Boolean);
     if(lTapLine){lTapLine.setLatLngs(pts);lTapCase.setLatLngs(pts);}
     else{
       lTapCase=L.polyline(pts,{color:'#0a1220',weight:5,opacity:.4}).addTo(LMAP);
       lTapLine=L.polyline(pts,{color:'#ffb454',weight:2.5,opacity:.95}).addTo(LMAP);
-      lTap.bringToFront&&lTap.bringToFront();
+      lTaps.forEach(m=>m.bringToFront&&m.bringToFront());
     }
-    if(from)lTap.setTooltipContent(yd(mDist(from,t))+'y');
-    if(mapMarks.greenC&&typeof lGreen!=='undefined'&&lGreen)lGreen.setTooltipContent(yd(mDist(t,mapMarks.greenC))+'y');
+    // each dot prices its arriving leg
+    let prev=from;
+    lTaps.forEach((m,i)=>{if(prev)m.setTooltipContent(yd(mDist(prev,ts[i]))+'y');prev=ts[i];});
+    if(mapMarks.greenC&&typeof lGreen!=='undefined'&&lGreen&&prev)lGreen.setTooltipContent(yd(mDist(prev,mapMarks.greenC))+'y');
   };
-  const clearTap=()=>{
-    [lTap,lTapLine,lTapCase].forEach(o=>{if(o)LMAP.removeLayer(o);});
-    lTap=lTapLine=lTapCase=null;
+  const clearTap=m=>{
+    if(m){LMAP.removeLayer(m);lTaps=lTaps.filter(x=>x!==m);}
+    else{lTaps.forEach(x=>LMAP.removeLayer(x));lTaps=[];}
+    if(lTaps.length){refreshTapLine();return;}
+    [lTapLine,lTapCase].forEach(o=>{if(o)LMAP.removeLayer(o);});
+    lTapLine=lTapCase=null;
     if(mapMarks.greenC&&typeof lGreen!=='undefined'&&lGreen&&mapMarks.ref)
-      lGreen.setTooltipContent(yd(mDist(mapMarks.ref,mapMarks.greenC))+'y');
+      lGreen.setTooltipContent(yd(mDist(mapMarks.mePos||mapMarks.ref,mapMarks.greenC))+'y');
   };
   mapMarks.setMe=pos=>{if(!LMAP)return;
     if(!lMe)lMe=L.circleMarker(pos,{radius:8,color:'#fff',weight:2.5,fillColor:'#2b86ec',fillOpacity:1}).addTo(LMAP);else lMe.setLatLng(pos);
     refreshTapLine();  // the first leg walks with you
   };
   mapMarks.setTap=t=>{if(!LMAP)return;
-    if(!lTap){lTap=L.circleMarker(t,{radius:9,color:'#fff',weight:2.5,fillColor:'#ffb454',fillOpacity:1}).addTo(LMAP);
-      lTap.bindTooltip('',{permanent:true,direction:'top',offset:[0,-10],className:'maplbl'});}
-    else lTap.setLatLng(t);
+    if(lTaps.length>=2){
+      // both spots placed — a fresh tap moves whichever is closer to it
+      let best=lTaps[0];
+      lTaps.forEach(m=>{if(mDist(tapLL(m),t)<mDist(tapLL(best),t))best=m;});
+      best.setLatLng(t);
+    }else{
+      const m=L.circleMarker(t,{radius:9,color:'#fff',weight:2.5,fillColor:'#ffb454',fillOpacity:1}).addTo(LMAP);
+      m.bindTooltip('',{permanent:true,direction:'top',offset:[0,-10],className:'maplbl'});
+      lTaps.push(m);
+    }
     refreshTapLine();
   };
-  // drag the spot to re-price both legs live; a plain tap on the dot clears it
-  let tapDrag=false,tapMoved=false,suppressClick=false;
+  // drag a spot to re-price its legs live; a plain tap on a dot clears just that dot
+  let dragM=null,tapMoved=false,suppressClick=false;
   const evPt=e=>LMAP.mouseEventToContainerPoint(e.touches?e.touches[0]:e);
   const cont=LMAP.getContainer();
   cont.addEventListener('pointerdown',e=>{
-    if(!lTap)return;
-    const pt=evPt(e), tp=LMAP.latLngToContainerPoint(lTap.getLatLng());
-    if(pt.distanceTo(tp)>24)return;
-    tapDrag=true;tapMoved=false;
+    if(!lTaps.length)return;
+    const pt=evPt(e);
+    let best=null,bd=Infinity;
+    lTaps.forEach(m=>{const d=pt.distanceTo(LMAP.latLngToContainerPoint(m.getLatLng()));if(d<bd){bd=d;best=m;}});
+    if(bd>24)return;
+    dragM=best;tapMoved=false;
     LMAP.dragging.disable();
     e.preventDefault();e.stopPropagation();
   },{passive:false});
   cont.addEventListener('pointermove',e=>{
-    if(!tapDrag)return;
+    if(!dragM)return;
     tapMoved=true;
     const ll=LMAP.containerPointToLatLng(evPt(e));
-    lTap.setLatLng(ll);refreshTapLine();
+    dragM.setLatLng(ll);refreshTapLine();
     e.preventDefault();
   },{passive:false});
   const endDrag=()=>{
-    if(!tapDrag)return;
-    tapDrag=false;LMAP.dragging.enable();
+    if(!dragM)return;
+    const m=dragM;dragM=null;
+    LMAP.dragging.enable();
     suppressClick=true;setTimeout(()=>{suppressClick=false;},250);
-    if(!tapMoved)clearTap();
+    if(!tapMoved)clearTap(m);
   };
   cont.addEventListener('pointerup',endDrag);
   cont.addEventListener('pointercancel',endDrag);
