@@ -258,7 +258,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784328883';
+const BUILD='1784330455';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -994,8 +994,10 @@ function runningTotalsCard(){
     const rows=units.map(u=>({label:u.label,v:eng.ledgers[L][u.id],d:eng.ledgers[L][u.id]-eng.par[L][u.id]}));
     rows.sort((a,b)=>a.d-b.d);
     const tied=rows.every(r=>r.d===rows[0].d);
-    tiles=rows.map((r,ri)=>tile(r.label,String(r.v),tied?'all square':`${r.d===0?'E':(r.d>0?'+':'')+r.d}${ri===0?' · leader':''}`,tied?3:ri,parCol(r.d))).join('');
-    foot='strokes';
+    // to-par leads big & bold; the stroke count rides small underneath
+    const toPar=d=>d===0?'E':(d>0?'+':'')+d;
+    tiles=rows.map((r,ri)=>tile(r.label,toPar(r.d),tied?(thru?`${r.v} strokes`:'all square'):(ri===0?`${r.v} · leader`:`${r.v} strokes`),tied?3:ri,parCol(r.d))).join('');
+    foot='to par';
   }else if(g==='quota'){
     const q=computeQuota();
     const rows=actIdx().map(i=>({label:first(i),v:q.ledgers.gross[i],d:q.ledgers.gross[i]-q.targets[i]}));
@@ -1508,9 +1510,21 @@ function teardownMap(){
   if(LMAP){try{LMAP.remove();}catch(e){}LMAP=null;}
   mapMarks={};lSpine=null;gmSpine=null;
 }
+// whose phone is this? self-claimed slot first, then profile-name match, else slot 0
+function myPlayerIdx(){
+  let i=S.players.findIndex(p=>p&&p.ownerDev===devId());
+  if(i<0&&S.me&&S.me.name)i=S.players.findIndex(p=>p&&(p.name||'').trim().toLowerCase()===S.me.name.trim().toLowerCase());
+  return i<0?0:i;
+}
+function mapScore(){if(S.round.started&&mapHole!==S.round.cur)jumpHole(mapHole);go('hole');}
 function vMap(){
   const hole=S.course.holes[mapHole]||{par:4,si:0};
-  return topbar(`Hole ${mapHole+1} · Par ${hole.par}`,'','hole','hero maphero',gameBadgeHTML())+`
+  // Score button: confirmed hole → your score on it; otherwise "Score"
+  // (gross is prefilled with par, so only a CONFIRMED hole counts as scored)
+  const rec=S.round.holes[mapHole];
+  const sc=rec&&rec.confirmed&&rec.gross?rec.gross[myPlayerIdx()]:null;
+  const scoreBtn=`<button onclick="mapScore()">${sc!=null?esc(String(sc)):'Score'}</button>`;
+  return topbar(`Hole ${mapHole+1} · Par ${hole.par}`,`Handicap ${hole.si}`,'','hero maphero',gameBadgeHTML()+scoreBtn)+`
   <div id="holemap"></div>
   <div class="mapbar">
     <div class="row" style="border:none;padding:2px 0">
@@ -3254,7 +3268,7 @@ function vHole(){
         :`<button class="big" ${done?'':'disabled'} onclick="confirmHole()">Confirm hole</button>`}
     `;
   }
-  return topbar(`Hole ${h+1} · Par ${hole.par}`,S.share.on?`${esc(S.share.code)} ${sockOpen?'●':'○'}`:'','','hero',gameBadgeHTML())+`<main>
+  return topbar(`Hole ${h+1} · Par ${hole.par}`,`Handicap ${hole.si}${S.share.on?` · ${esc(S.share.code)} ${sockOpen?'●':'○'}`:''}`,'','hero',gameBadgeHTML())+`<main>
     ${reviewBanner()}${runningTotalsCard()}
     <div class="wolfcard">
       <div style="flex:1;min-width:0"><b>${esc(names[rec.wolfAt??wolf])} is the Wolf</b>
@@ -3458,7 +3472,7 @@ function vHoleNines(){
       ?`${isReview()?'':`<button class="big" onclick="nextHole()">${posOf(h)<playOrder().length-1?'Next hole →':'Finish round'}</button>`}
         <button class="ghost mt" style="width:100%" onclick="unconfirm()">Edit this hole</button>`
       :`<button class="big" ${done?'':'disabled'} onclick="confirmHole()">Confirm hole</button>`}`;
-  return topbar(`Hole ${h+1} · Par ${hole.par}`,S.share.on?`${esc(S.share.code)} ${sockOpen?'●':'○'}`:'','','hero',gameBadgeHTML())+`<main>
+  return topbar(`Hole ${h+1} · Par ${hole.par}`,`Handicap ${hole.si}${S.share.on?` · ${esc(S.share.code)} ${sockOpen?'●':'○'}`:''}`,'','hero',gameBadgeHTML())+`<main>
     ${reviewBanner()}${runningTotalsCard()}
     ${isN?`<div class="ninecard">
       <div style="flex:1;min-width:0"><b>9 points on this hole</b>
@@ -3533,7 +3547,7 @@ function vHoleVegas(){
           <div class="stepper mini"><button onclick="chStat('${k}',${i},-1)">−</button><span class="val num">${v}</span><button onclick="chStat('${k}',${i},1)">+</button></div></div>`;
       }).join('')}</div></div>`;}).join('')}
   </div>`:'';
-  return topbar(`Hole ${h+1} · Par ${hole.par}`,S.share.on?`${esc(S.share.code)} ${sockOpen?'●':'○'}`:'','','hero',gameBadgeHTML())+`<main>
+  return topbar(`Hole ${h+1} · Par ${hole.par}`,`Handicap ${hole.si}${S.share.on?` · ${esc(S.share.code)} ${sockOpen?'●':'○'}`:''}`,'','hero',gameBadgeHTML())+`<main>
     ${reviewBanner()}${runningTotalsCard()}
     <div class="vegascard">
       <div style="flex:1;min-width:0"><b>Vegas — low number wins the difference</b>
@@ -3566,7 +3580,7 @@ function vHoleScramble(){
       </div>
     </div>`;}).join('');
   const done=capt.every(i=>rec.gross[i]!=null);
-  return topbar(`Hole ${h+1} · Par ${hole.par}`,S.share.on?`${esc(S.share.code)} ${sockOpen?'●':'○'}`:'','','hero',gameBadgeHTML())+`<main>
+  return topbar(`Hole ${h+1} · Par ${hole.par}`,`Handicap ${hole.si}${S.share.on?` · ${esc(S.share.code)} ${sockOpen?'●':'○'}`:''}`,'','hero',gameBadgeHTML())+`<main>
     ${reviewBanner()}${runningTotalsCard()}
     <div class="card">
       <div class="tiny mb">${T.length===1?'One ball for the whole group — the official tournament card.':'One score per team — everyone plays from the best shot.'}</div>
