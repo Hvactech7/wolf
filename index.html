@@ -258,7 +258,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784273440';
+const BUILD='1784322192';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -1644,7 +1644,6 @@ function initGoogleHoleMap(el,geo,geoErr){
     if(geo.green&&geo.green.length>2){
       greenPoly=geo.green;greenC=centroidOf(geo.green);
     }else greenC=pathEnd;
-    dot(geo.path[0],'#2b86ec');
     var gmGreen=dot(greenC,'#ffd75e');
     gmGreen.setLabel(lbl(yd(mDist(geo.path[0],greenC))+'y'));
     const b=new gm.LatLngBounds();
@@ -1693,7 +1692,7 @@ function initGoogleHoleMap(el,geo,geoErr){
     const from=mapMarks.mePos||mapMarks.ref;
     const pts=[from,t,mapMarks.greenC].filter(Boolean).map(P);
     if(gmTapLine)gmTapLine.setPath(pts);
-    else{gmTapLine=new gm.Polyline({path:pts,strokeColor:'#ffb454',strokeWeight:2.5,strokeOpacity:.95,clickable:false,map:GMAP});gmOverlays.push(gmTapLine);}
+    else{gmTapLine=new gm.Polyline({path:pts,strokeColor:'#ffb454',strokeWeight:1.75,strokeOpacity:.95,clickable:false,map:GMAP});gmOverlays.push(gmTapLine);}
     if(from)gmTap.setLabel(lbl(yd(mDist(from,t))+'y'));
     if(mapMarks.greenC&&typeof gmGreen!=='undefined'&&gmGreen)gmGreen.setLabel(lbl(yd(mDist(t,mapMarks.greenC))+'y'));
   };
@@ -1746,7 +1745,7 @@ async function initHoleMap(){
     if(geo.green&&geo.green.length>2){
       greenPoly=geo.green;greenC=centroidOf(geo.green);
     }else greenC=pathEnd;
-    L.circleMarker(geo.path[0],{radius:6,color:'#fff',weight:2,fillColor:'#2b86ec',fillOpacity:1}).addTo(LMAP);
+    // no tee dot — the GPS dot is the start of every line (tee position still anchors the yardage label below)
     var lGreen=L.circleMarker(greenC,{radius:6,color:'#fff',weight:2,fillColor:'#ffd75e',fillOpacity:1}).addTo(LMAP);
     lGreen.bindTooltip(yd(mDist(geo.path[0],greenC))+'y',{permanent:true,direction:'top',offset:[0,-8],className:'maplbl'});
     LMAP.fitBounds(L.latLngBounds(geo.path.concat(greenPoly||[])),{padding:[36,36]});
@@ -1782,32 +1781,36 @@ async function initHoleMap(){
   }
   let lMe=null,lTaps=[],lTapLine=null,lTapCase=null;
   const tapLL=m=>{const p=m.getLatLng();return [p.lat,p.lng];};
+  const dropTapLine=()=>{
+    [lTapLine,lTapCase].forEach(o=>{if(o)LMAP.removeLayer(o);});
+    lTapLine=lTapCase=null;
+    if(mapMarks.greenC&&typeof lGreen!=='undefined'&&lGreen&&mapMarks.ref)
+      lGreen.setTooltipContent(yd(mDist(mapMarks.ref,mapMarks.greenC))+'y');
+  };
+  // the line is live whenever GPS has a fix (me → green) — taps just add waypoints
   const refreshTapLine=()=>{
-    if(!lTaps.length)return;
-    const from=mapMarks.mePos||mapMarks.ref;
+    const from=mapMarks.mePos||(lTaps.length?mapMarks.ref:null);
+    if(!from){dropTapLine();return;}
     // keep spots ordered along the hole so the line never zigzags backward
-    if(from&&lTaps.length>1)lTaps.sort((a,b)=>mDist(from,tapLL(a))-mDist(from,tapLL(b)));
+    if(lTaps.length>1)lTaps.sort((a,b)=>mDist(from,tapLL(a))-mDist(from,tapLL(b)));
     const ts=lTaps.map(tapLL);
     const pts=[from,...ts,mapMarks.greenC].filter(Boolean);
+    if(pts.length<2){dropTapLine();return;}
     if(lTapLine){lTapLine.setLatLngs(pts);lTapCase.setLatLngs(pts);}
     else{
-      lTapCase=L.polyline(pts,{color:'#0a1220',weight:5,opacity:.4}).addTo(LMAP);
-      lTapLine=L.polyline(pts,{color:'#ffb454',weight:2.5,opacity:.95}).addTo(LMAP);
+      lTapCase=L.polyline(pts,{color:'#0a1220',weight:3.5,opacity:.4}).addTo(LMAP);
+      lTapLine=L.polyline(pts,{color:'#ffb454',weight:1.75,opacity:.95}).addTo(LMAP);
       lTaps.forEach(m=>m.bringToFront&&m.bringToFront());
     }
     // each dot prices its arriving leg
     let prev=from;
-    lTaps.forEach((m,i)=>{if(prev)m.setTooltipContent(yd(mDist(prev,ts[i]))+'y');prev=ts[i];});
-    if(mapMarks.greenC&&typeof lGreen!=='undefined'&&lGreen&&prev)lGreen.setTooltipContent(yd(mDist(prev,mapMarks.greenC))+'y');
+    lTaps.forEach((m,i)=>{m.setTooltipContent(yd(mDist(prev,ts[i]))+'y');prev=ts[i];});
+    if(mapMarks.greenC&&typeof lGreen!=='undefined'&&lGreen)lGreen.setTooltipContent(yd(mDist(prev,mapMarks.greenC))+'y');
   };
   const clearTap=m=>{
     if(m){LMAP.removeLayer(m);lTaps=lTaps.filter(x=>x!==m);}
     else{lTaps.forEach(x=>LMAP.removeLayer(x));lTaps=[];}
-    if(lTaps.length){refreshTapLine();return;}
-    [lTapLine,lTapCase].forEach(o=>{if(o)LMAP.removeLayer(o);});
-    lTapLine=lTapCase=null;
-    if(mapMarks.greenC&&typeof lGreen!=='undefined'&&lGreen&&mapMarks.ref)
-      lGreen.setTooltipContent(yd(mDist(mapMarks.mePos||mapMarks.ref,mapMarks.greenC))+'y');
+    refreshTapLine();
   };
   mapMarks.setMe=pos=>{if(!LMAP)return;
     if(!pos){if(lMe){LMAP.removeLayer(lMe);lMe=null;}refreshTapLine();return;}
