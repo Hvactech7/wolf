@@ -246,7 +246,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784266848';
+const BUILD='1784267554';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -1596,7 +1596,16 @@ function startMapGps(){
   if(!navigator.geolocation)return;
   mapWatch=navigator.geolocation.watchPosition(p=>{
     const pos=[p.coords.latitude,p.coords.longitude];
-    cacheCoords(pos);mapMarks.mePos=pos;
+    cacheCoords(pos);
+    // sanity guard: if you're nowhere near this hole (browsing from home),
+    // ignore GPS — measure from the tee like a yardage book instead
+    const near=mapMarks.greenC||mapMarks.ref;
+    if(near&&mDist(pos,near)>1400){
+      if(mapMarks.mePos){mapMarks.mePos=null;if(mapMarks.setMe)mapMarks.setMe(null);}
+      if(mapMarks.ref)updateFMB(mapMarks.ref,'yards from the tee');
+      return;
+    }
+    mapMarks.mePos=pos;
     if(mapMarks.setMe)mapMarks.setMe(pos);
     updateFMB(pos,'yards from you');
   },()=>{},{enableHighAccuracy:true,maximumAge:3000});
@@ -1661,7 +1670,10 @@ function initGoogleHoleMap(el,geo,geoErr){
     const s2=document.getElementById('fmbsub');
     if(s2)s2.textContent=geoErr||'Hole lines not mapped here — rangefinder still works.';
   }
-  mapMarks.setMe=pos=>{if(!gmMe)gmMe=dot(pos,'#2b86ec',8);else gmMe.setPosition(P(pos));};
+  mapMarks.setMe=pos=>{
+    if(!pos){if(gmMe){gmMe.setMap(null);gmMe=null;}return;}
+    if(!gmMe)gmMe=dot(pos,'#2b86ec',8);else gmMe.setPosition(P(pos));
+  };
   mapMarks.setTap=t=>{
     if(!gmTap)gmTap=dot(t,'#ffb454');else gmTap.setPosition(P(t));
     // triangulate: solid two-leg line you/tee → spot → green, each dot labeled
@@ -1786,6 +1798,7 @@ async function initHoleMap(){
       lGreen.setTooltipContent(yd(mDist(mapMarks.mePos||mapMarks.ref,mapMarks.greenC))+'y');
   };
   mapMarks.setMe=pos=>{if(!LMAP)return;
+    if(!pos){if(lMe){LMAP.removeLayer(lMe);lMe=null;}refreshTapLine();return;}
     if(!lMe)lMe=L.circleMarker(pos,{radius:8,color:'#fff',weight:2.5,fillColor:'#2b86ec',fillOpacity:1}).addTo(LMAP);else lMe.setLatLng(pos);
     refreshTapLine();  // the first leg walks with you
   };
