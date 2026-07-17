@@ -258,7 +258,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784330455';
+const BUILD='1784332193';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -348,6 +348,9 @@ function load(){
       if(!s.history)s.history=[];
       if(!s.config.span)s.config.span={count:18,start:0};
       if(!s.round.span)s.round.span={count:18,start:0};
+      // installs predating a new builtin course never get it from the _v migration
+      // below (it only refreshes matching ids) — append what's missing, every load
+      builtinCourses().forEach(fc=>{if(!s.courses.some(c=>c.id===fc.id))s.courses.push(clone(fc));});
       if((s.config._v||2)<3){
         s.config._v=3;
         const fresh=builtinCourses();
