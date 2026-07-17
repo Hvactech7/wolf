@@ -41,6 +41,10 @@
   .num{font-family:Rajdhani,Inter,sans-serif;font-weight:700}
   header.top{background:#151d2c;color:var(--green-mid);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:5;border-bottom:2px solid var(--green-dk)}
   header.top h1{font-size:17px;font-weight:600;letter-spacing:.3px}
+  header.top .gbadge{display:flex;flex-direction:column;align-items:center;gap:1px;margin-left:auto;flex:none}
+  header.top .gbadge img{height:34px;width:auto;filter:drop-shadow(0 1px 3px rgba(0,0,0,.5))}
+  header.top .gbadge span{font-size:11px;font-weight:700;color:var(--ink2);letter-spacing:.3px;white-space:nowrap}
+  header.top .gbadge+button{margin-left:10px}
   header.top .sub{font-size:12px;opacity:.8;color:var(--ink2)}
   /* hero topbar — hole screens only: big Rajdhani hole number with a gold glow */
   /* WoW-hint headers: Friz-Quadrata-style serif carved in gold bullion */
@@ -50,7 +54,7 @@
     -webkit-background-clip:text;background-clip:text;color:transparent;
     filter:drop-shadow(0 2px 0 rgba(0,0,0,.6)) drop-shadow(0 0 12px rgba(232,197,82,.38))}
   header.top.hero .sub{font-size:13px;letter-spacing:.4px}
-  header.top.maphero h1{font-size:30px;letter-spacing:1.5px}
+  header.top.maphero h1{font-size:26px;letter-spacing:1.2px;white-space:nowrap}
   header.top button{background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:600;font-family:inherit}
   main{flex:1;padding:14px 14px 90px}
   .card{background:var(--card);border:2px solid var(--green);border-radius:10px;padding:14px;margin-bottom:16px;box-shadow:4px 4px 0 var(--green)}
@@ -254,7 +258,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784272722';
+const BUILD='1784273440';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -1499,7 +1503,7 @@ function teardownMap(){
 }
 function vMap(){
   const hole=S.course.holes[mapHole]||{par:4,si:0};
-  return topbar(`Hole ${mapHole+1} · Par ${hole.par}`,'','hole','hero maphero')+`
+  return topbar(`Hole ${mapHole+1} · Par ${hole.par}`,'','hole','hero maphero',gameBadgeHTML())+`
   <div id="holemap"></div>
   <div class="mapbar">
     <div class="row" style="border:none;padding:2px 0">
@@ -2024,9 +2028,17 @@ function render(){
   if(scr==='map')requestAnimationFrame(initHoleMap);
   else teardownMap();
 }
-function topbar(title,sub,backTo,cls){
+function topbar(title,sub,backTo,cls,right){
   return `<header class="top${cls?' '+cls:''}"><div><h1>${esc(title)}</h1>${sub?`<div class="sub">${esc(sub)}</div>`:''}</div>
-  ${backTo?`<button onclick="go('${backTo}')">Back</button>`:''}</header>`;
+  ${right||''}${backTo?`<button onclick="go('${backTo}')">Back</button>`:''}</header>`;
+}
+function gameArtFile(g){return {wolf:'wolf.png',nines:'nine.png',vegas:'vegas.png',quota:'quota.png',sixes:'sixes.png',umbrella:'umbrella.png',bbb:'bbb.png',stroke:'stroke.png',stableford:'stableford.png',bestball:'bestball.png',scramble:'scramble.png',nassau:'nassau.png',skins:'skins.png'}[g];}
+function gameBadgeHTML(){
+  if(!S.round.started)return '';
+  const G=gamesOn(), g=G[0];
+  if(!g)return '';
+  const f=gameArtFile(g);
+  return `<div class="gbadge">${f?`<img src="${art(f)}" alt="" onerror="this.style.display='none'">`:''}<span>${esc(gameName(g))}${G.length>1?` +${G.length-1}`:''}</span></div>`;
 }
 function go(scr){S.screen=scr;save();render();}
 function tabs(sel){
@@ -2034,7 +2046,7 @@ function tabs(sel){
     <button class="${sel==='hole'?'sel':''}" onclick="go('hole')"><span class="ic">⛳</span>Hole</button>
     <button class="${sel==='standings'?'sel':''}" onclick="go('standings')"><span class="ic">🏆</span>Standings</button>
     <button class="${sel==='settle'?'sel':''}" onclick="go('settle')"><span class="ic">💰</span>Settle</button>
-    <button onclick="go('home')"><span class="ic" style="font-size:29px;line-height:25px">⚙︎</span>Setup</button>
+    <button onclick="go('home')"><span class="ic" style="line-height:25px"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.488.488 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 0 0-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg></span>Setup</button>
   </nav>`;
 }
 
@@ -3232,7 +3244,7 @@ function vHole(){
         :`<button class="big" ${done?'':'disabled'} onclick="confirmHole()">Confirm hole</button>`}
     `;
   }
-  return topbar(`Hole ${h+1} · Par ${hole.par}`,S.share.on?`${esc(S.share.code)} ${sockOpen?'●':'○'}`:'','','hero')+`<main>
+  return topbar(`Hole ${h+1} · Par ${hole.par}`,S.share.on?`${esc(S.share.code)} ${sockOpen?'●':'○'}`:'','','hero',gameBadgeHTML())+`<main>
     ${reviewBanner()}${runningTotalsCard()}
     <div class="wolfcard">
       <div style="flex:1;min-width:0"><b>${esc(names[rec.wolfAt??wolf])} is the Wolf</b>
@@ -3436,7 +3448,7 @@ function vHoleNines(){
       ?`${isReview()?'':`<button class="big" onclick="nextHole()">${posOf(h)<playOrder().length-1?'Next hole →':'Finish round'}</button>`}
         <button class="ghost mt" style="width:100%" onclick="unconfirm()">Edit this hole</button>`
       :`<button class="big" ${done?'':'disabled'} onclick="confirmHole()">Confirm hole</button>`}`;
-  return topbar(`Hole ${h+1} · Par ${hole.par}`,S.share.on?`${esc(S.share.code)} ${sockOpen?'●':'○'}`:'','','hero')+`<main>
+  return topbar(`Hole ${h+1} · Par ${hole.par}`,S.share.on?`${esc(S.share.code)} ${sockOpen?'●':'○'}`:'','','hero',gameBadgeHTML())+`<main>
     ${reviewBanner()}${runningTotalsCard()}
     ${isN?`<div class="ninecard">
       <div style="flex:1;min-width:0"><b>9 points on this hole</b>
@@ -3511,7 +3523,7 @@ function vHoleVegas(){
           <div class="stepper mini"><button onclick="chStat('${k}',${i},-1)">−</button><span class="val num">${v}</span><button onclick="chStat('${k}',${i},1)">+</button></div></div>`;
       }).join('')}</div></div>`;}).join('')}
   </div>`:'';
-  return topbar(`Hole ${h+1} · Par ${hole.par}`,S.share.on?`${esc(S.share.code)} ${sockOpen?'●':'○'}`:'','','hero')+`<main>
+  return topbar(`Hole ${h+1} · Par ${hole.par}`,S.share.on?`${esc(S.share.code)} ${sockOpen?'●':'○'}`:'','','hero',gameBadgeHTML())+`<main>
     ${reviewBanner()}${runningTotalsCard()}
     <div class="vegascard">
       <div style="flex:1;min-width:0"><b>Vegas — low number wins the difference</b>
@@ -3544,7 +3556,7 @@ function vHoleScramble(){
       </div>
     </div>`;}).join('');
   const done=capt.every(i=>rec.gross[i]!=null);
-  return topbar(`Hole ${h+1} · Par ${hole.par}`,S.share.on?`${esc(S.share.code)} ${sockOpen?'●':'○'}`:'','','hero')+`<main>
+  return topbar(`Hole ${h+1} · Par ${hole.par}`,S.share.on?`${esc(S.share.code)} ${sockOpen?'●':'○'}`:'','','hero',gameBadgeHTML())+`<main>
     ${reviewBanner()}${runningTotalsCard()}
     <div class="card">
       <div class="tiny mb">${T.length===1?'One ball for the whole group — the official tournament card.':'One score per team — everyone plays from the best shot.'}</div>
