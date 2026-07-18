@@ -258,26 +258,26 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784333514';
+const BUILD='1784351935';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
-function courseTealBend(){return {id:'teal-bend',name:'Teal Bend GC',
+function courseTealBend(){return {id:'teal-bend',name:'Teal Bend GC',loc:[38.6972,-121.6173],
   teeSets:[{id:'tb-blk',name:'Black',rating:74.0,slope:135},{id:'tb-blu',name:'Blue',rating:72.0,slope:130},{id:'tb-bwc',name:'Blue/White Combo',rating:70.9,slope:127},{id:'tb-wht',name:'White',rating:69.4,slope:120},{id:'tb-wgc',name:'White/Gold Combo',rating:66.5,slope:114},{id:'tb-w-bwc',name:'Blue/White Combo (W)',rating:76.8,slope:136},{id:'tb-w-wht',name:'White (W)',rating:74.5,slope:132},{id:'tb-w-wgc',name:'White/Gold Combo (W)',rating:71.1,slope:122}],
   holes:[{par:4,si:5},{par:5,si:11},{par:4,si:13},{par:3,si:15},{par:4,si:9},{par:4,si:3},{par:4,si:1},{par:5,si:7},{par:3,si:17},
          {par:5,si:12},{par:4,si:6},{par:3,si:16},{par:4,si:18},{par:4,si:2},{par:4,si:4},{par:3,si:14},{par:5,si:8},{par:4,si:10}]};}
-function courseRanchoSolano(){return {id:'rancho-solano',name:'Rancho Solano GC',
+function courseRanchoSolano(){return {id:'rancho-solano',name:'Rancho Solano GC',loc:[38.2886,-122.0742],
   teeSets:[{id:'rs-blu',name:'Blue',rating:71.8,slope:133},{id:'rs-bwc',name:'Blue/White Combo',rating:70.9,slope:131},{id:'rs-wht',name:'White',rating:70.0,slope:128},{id:'rs-gd',name:'Gold',rating:67.8,slope:120},{id:'rs-rd',name:'Red',rating:65.7,slope:112},{id:'rs-w-wht',name:'White (W)',rating:75.5,slope:135},{id:'rs-w-gd',name:'Gold (W)',rating:72.9,slope:128},{id:'rs-w-rd',name:'Red (W)',rating:70.3,slope:123}],
   holes:[{par:5,si:3},{par:4,si:15},{par:4,si:1},{par:4,si:13},{par:3,si:7},{par:4,si:17},{par:5,si:5},{par:3,si:11},{par:4,si:9},
          {par:5,si:8},{par:4,si:2},{par:3,si:4},{par:4,si:6},{par:4,si:14},{par:3,si:18},{par:4,si:16},{par:5,si:12},{par:4,si:10}]};}
 // Lake Chabot (Oakland) — ratings from NCGA postings; hole lines hand-traced
 // from satellite by Nathan against 18Birdies reference, July 2026. Home of the
 // 665-yard par-6 18th.
-function courseLakeChabot(){return {id:'lake-chabot',name:'Lake Chabot GC',
+function courseLakeChabot(){return {id:'lake-chabot',name:'Lake Chabot GC',loc:[37.7419,-122.1220],
   teeSets:[{id:'lc-blu',name:'Blue',rating:68.9,slope:119},{id:'lc-wht',name:'White',rating:67.4,slope:116},{id:'lc-w-wht',name:'White (W)',rating:72.8,slope:123},{id:'lc-w-rd',name:'Red (W)',rating:70.1,slope:116}],
   holes:[{par:4,si:1},{par:3,si:13},{par:5,si:9},{par:5,si:7},{par:4,si:15},{par:4,si:11},{par:3,si:5},{par:5,si:3},{par:3,si:17},
          {par:4,si:16},{par:4,si:2},{par:3,si:18},{par:4,si:10},{par:4,si:4},{par:4,si:14},{par:4,si:6},{par:3,si:8},{par:6,si:12}]};}
-function courseDarkHorse(){return {id:'darkhorse',name:'DarkHorse GC',
+function courseDarkHorse(){return {id:'darkhorse',name:'DarkHorse GC',loc:[39.0294,-121.0507],
   teeSets:[{id:'dh-blk',name:'Black',rating:74.6,slope:137},{id:'dh-cop',name:'Copper',rating:73.1,slope:134},{id:'dh-blu',name:'Blue',rating:71.7,slope:130},{id:'dh-wht',name:'White',rating:69.5,slope:127},{id:'dh-rd',name:'Red',rating:64.4,slope:115},{id:'dh-w-blu',name:'Blue (W)',rating:77.4,slope:138},{id:'dh-w-wht',name:'White (W)',rating:75.0,slope:133},{id:'dh-w-rd',name:'Red (W)',rating:69.4,slope:125}],
   holes:[{par:4,si:10},{par:4,si:16},{par:3,si:8},{par:5,si:2},{par:4,si:4},{par:3,si:18},{par:5,si:6},{par:4,si:14},{par:4,si:12},
          {par:4,si:13},{par:5,si:1},{par:4,si:9},{par:3,si:11},{par:4,si:17},{par:4,si:3},{par:3,si:7},{par:4,si:5},{par:5,si:15}]};}
@@ -2799,8 +2799,37 @@ function piCourseLookup2(payload){
     catch(e){clearTimeout(pendingCourse[rid].timer);delete pendingCourse[rid];rej(e);}
   });
 }
+// If a found course IS one we ship curated data for (tees/pars/hosted maps),
+// hand back the real record — matched by proximity to the course center, with
+// a normalized-name check as backup. Custom lookalikes are the #1 way users
+// end up without hole maps.
+function matchBuiltinCourse(name,lat,lon){
+  const norm=s=>String(s||'').toLowerCase().replace(/\b(golf|course|club|links|muni|municipal|country|gc|cc|the)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
+  const nn=norm(name);
+  let best=null;
+  builtinCourses().forEach(bc=>{
+    if(!bc.loc)return;
+    const d=(lat!=null&&lon!=null)?mDist([lat,lon],bc.loc):Infinity;
+    const bn=norm(bc.name);
+    const nameHit=nn&&bn&&(nn.includes(bn)||bn.includes(nn));
+    if(d<2500||(nameHit&&d<15000))best=bc;
+  });
+  return best;
+}
 async function useFoundCourse(idx){
   const c=finder.choices[idx];
+  const bc=matchBuiltinCourse(c.name,c.lat,c.lon);
+  if(bc){
+    set(()=>{
+      syncLib();
+      const saved=S.courses.find(x=>x.id===bc.id);
+      S.course=clone(saved||bc);
+      S.players.forEach(p=>{if(!S.course.teeSets.some(t=>t.id===p.tee))p.tee=S.course.teeSets[0].id;});
+      finder={status:'idle',choices:[],error:''};
+      S.screen=pickingCourse?'pickcourse':'course';
+    });
+    return;
+  }
   finder={status:'fetching',choices:[],error:''};render();
   // 1) USGA/GHIN via the Pi — authoritative pars, stroke indexes, ratings, slopes
   let g=null;
