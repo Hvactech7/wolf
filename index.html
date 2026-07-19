@@ -219,9 +219,9 @@
   .flexwrap{display:flex;flex-wrap:wrap;gap:6px}
   .sc-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
   table.sc{border-collapse:collapse}
-  .sc th{font-size:13px;color:var(--ink3);font-weight:600;padding:4px 0;min-width:33px}
-  .sc td{font-family:Rajdhani,Inter,sans-serif;font-weight:600;font-size:20px;text-align:center;min-width:33px;padding:5px 3px;border-bottom:1px solid var(--line);white-space:nowrap;line-height:27px}
-  .sc td.nm,.sc th.nm{font-family:Inter,-apple-system,sans-serif;font-size:15px;text-align:left;position:sticky;left:0;background:var(--card);min-width:64px;max-width:112px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:8px;font-stretch:normal;letter-spacing:0}
+  .sc th{font-size:12px;color:var(--ink3);font-weight:600;padding:4px 0;min-width:26px}
+  .sc td{font-family:Rajdhani,Inter,sans-serif;font-weight:600;font-size:18px;text-align:center;min-width:26px;padding:5px 1px;border-bottom:1px solid var(--line);white-space:nowrap;line-height:25px}
+  .sc td.nm,.sc th.nm{font-family:Inter,-apple-system,sans-serif;font-size:14px;text-align:left;position:sticky;left:0;background:var(--card);min-width:52px;max-width:92px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:7px;font-stretch:normal;letter-spacing:0}
   .sc .parrow td{color:var(--ink3);font-weight:500}
   .sc td.tt{font-weight:700}
   .sc td.bir{background:#14301d;color:#7fd49a}
@@ -258,7 +258,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784497614';
+const BUILD='1784499147';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -1548,6 +1548,66 @@ function teardownMap(){
   mapMarks={};lSpine=null;gmSpine=null;
 }
 // whose phone is this? self-claimed slot first, then profile-name match, else slot 0
+// ---------- shot tracker ----------
+// Two taps: arm at your ball (GPS pin), tap again where it came to rest —
+// distance measured, then tag the club. Shots log locally to S.shotLog keyed
+// by round start (never synced — one player's shots can't clobber another's).
+let trackShot=null,pendingShot=null,trackPin=null;
+const CLUBS=['Dr','3W','5W','Hy','3i','4i','5i','6i','7i','8i','9i','PW','GW','SW','LW','Putt'];
+function shotPos(){
+  if(mapMarks&&mapMarks.mePos)return mapMarks.mePos.slice();
+  try{const c=LMAP.getCenter();return [c.lat,c.lng];}catch(e){return null;}
+}
+function drawTrackPin(){
+  if(trackPin){try{LMAP.removeLayer(trackPin);}catch(e){}trackPin=null;}
+  if(trackShot&&trackShot.hole===mapHole&&LMAP)
+    trackPin=L.circleMarker(trackShot.a,{radius:8,color:'#fff',weight:2.5,fillColor:'#e8604f',fillOpacity:1}).addTo(LMAP);
+}
+function updateTrackBtn(){
+  const b=document.getElementById('trackbtn');if(!b)return;
+  const armed=trackShot&&trackShot.hole===mapHole;
+  b.textContent=armed?'Mark Ball':'Track Shot';
+  b.style.borderColor=armed?'var(--amber-bd)':'var(--green)';
+  b.style.color=armed?'var(--amber-bd)':'var(--green-mid)';
+}
+function trackShotTap(){
+  const p=shotPos();if(!p)return;
+  if(!trackShot||trackShot.hole!==mapHole){
+    trackShot={hole:mapHole,a:p};
+    drawTrackPin();updateTrackBtn();
+  }else{
+    pendingShot={hole:trackShot.hole,a:trackShot.a,b:p,yds:Math.round(mDist(trackShot.a,p)*1.09361)};
+    openClubSheet(pendingShot.yds);
+  }
+}
+function openClubSheet(yds){
+  closeClubSheet();
+  const d=document.createElement('div');d.id='clubsheet';
+  d.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:calc(172px + env(safe-area-inset-bottom));z-index:80;width:min(440px,94vw);background:var(--card);border:2px solid var(--green);border-radius:14px;padding:12px;box-shadow:4px 4px 0 rgba(0,0,0,.4)';
+  d.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <b class="num" style="font-size:24px">${yds}y</b><span class="tiny">what club was that?</span>
+      <button class="ghost danger" onclick="discardShot()">✕</button></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">${CLUBS.map(c=>`<button class="ghost" style="padding:10px 0" onclick="saveShot('${c}')">${c}</button>`).join('')}</div>
+    <button class="ghost mt" style="width:100%" onclick="saveShot(null)">Skip — just log the distance</button>`;
+  document.body.appendChild(d);
+}
+function closeClubSheet(){const d=document.getElementById('clubsheet');if(d)d.remove();}
+function saveShot(club){
+  if(!pendingShot)return;
+  const key='s'+(S.round.startedAt||0);
+  if(!S.shotLog)S.shotLog={};
+  if(!S.shotLog[key])S.shotLog[key]=[];
+  S.shotLog[key].push({h:pendingShot.hole,a:pendingShot.a,b:pendingShot.b,yds:pendingShot.yds,club,at:Date.now()});
+  save();
+  pendingShot=null;trackShot=null;
+  if(trackPin){try{LMAP.removeLayer(trackPin);}catch(e){}trackPin=null;}
+  closeClubSheet();updateTrackBtn();
+}
+function discardShot(){
+  pendingShot=null;trackShot=null;
+  if(trackPin){try{LMAP.removeLayer(trackPin);}catch(e){}trackPin=null;}
+  closeClubSheet();updateTrackBtn();
+}
 // my score on the hole the map is showing — but only once it's actually been
 // entered: my own confirm stamp or the hole fully closed (gross is prefilled
 // with par, so a bare value doesn't count)
@@ -1592,6 +1652,7 @@ function vMap(){
   return topbar(`Hole ${mapHole+1} · Par ${hole.par}`,`Handicap ${hole.si}`,'','hero maphero',
     `<div style="display:flex;align-items:center;margin-left:auto">${myScore}${gameBadgeHTML()}</div>`)+`
   <div id="holemap"></div>
+  <button id="trackbtn" onclick="trackShotTap()" style="position:fixed;left:max(10px,calc(50vw - 230px));bottom:calc(112px + env(safe-area-inset-bottom));z-index:6;width:120px;height:46px;background:var(--card);border:2px solid ${trackShot&&trackShot.hole===mapHole?'var(--amber-bd)':'var(--green)'};border-radius:12px;color:${trackShot&&trackShot.hole===mapHole?'var(--amber-bd)':'var(--green-mid)'};font-family:Rajdhani,Inter,sans-serif;font-weight:700;font-size:19px;letter-spacing:.5px;box-shadow:2px 2px 0 rgba(0,0,0,.35)">${trackShot&&trackShot.hole===mapHole?'Mark Ball':'Track Shot'}</button>
   <button onclick="mapScoreTap()" style="position:fixed;right:max(10px,calc(50vw - 230px));bottom:calc(112px + env(safe-area-inset-bottom));z-index:6;width:120px;height:46px;background:var(--card);border:2px solid var(--green);border-radius:12px;color:var(--green-mid);font-family:Rajdhani,Inter,sans-serif;font-weight:700;font-size:${mapMySc()!=null?'24':'19'}px;letter-spacing:.5px;box-shadow:2px 2px 0 rgba(0,0,0,.35)">${mapMySc()!=null?mapMySc():'Score'}</button>
   <div class="mapbar">
     <div class="row" style="border:none;padding:2px 0">
@@ -2006,6 +2067,7 @@ async function initHoleMap(){
   cont.addEventListener('pointercancel',endDrag);
   mapMarks._suppress=()=>suppressClick;
   startMapGps();
+  drawTrackPin();
   LMAP.on('click',e=>{if(mapMarks._suppress&&mapMarks._suppress())return;mapTapAt([e.latlng.lat,e.latlng.lng]);});
 }
 function updateFMB(pos,label){
@@ -3843,6 +3905,46 @@ function vHoleScramble(){
 }
 
 // ----- standings -----
+// tap the standings scorecard → full 18 as two stacked nines (front/OUT, back/IN+TOT)
+function scSegTable(idx,segLabel,extraTot){
+  const hs=S.course.holes;
+  const cell=(g,par)=>{if(g==null)return '<td class="e">·</td>';const d=g-par;const c=d<=-2?'eag':d===-1?'bir':d===0?'':d===1?'bog':'dbl';return `<td class="${c}">${g}</td>`;};
+  const parSeg=idx.reduce((a,i)=>a+hs[i].par,0);
+  let out='<div class="sc-wrap"><table class="sc" style="width:100%"><tr><th class="nm">Hole</th>'+idx.map(i=>`<th>${i+1}</th>`).join('')+`<th>${segLabel}</th>`+(extraTot?'<th>TOT</th>':'')+'</tr>';
+  out+='<tr class="parrow"><td class="nm">Par</td>'+idx.map(i=>`<td>${hs[i].par}</td>`).join('')+`<td>${parSeg}</td>`+(extraTot?`<td>${hs.reduce((a,h)=>a+h.par,0)}</td>`:'')+'</tr>';
+  const rowDefs=gameOn()==='scramble'?scrambleTeams().map(t=>({name:t.map(i=>S.players[i].name).join(' & '),pi:t[0]})):S.players.slice(0,NP()).map((p,pi)=>({name:p.name,pi}));
+  rowDefs.forEach(({name:rowName,pi})=>{
+    const g=i=>S.round.holes[i].confirmed?S.round.holes[i].gross[pi]:null;
+    const played=idx.filter(i=>g(i)!=null);
+    const seg=played.length?played.reduce((s,i)=>s+g(i),0):null;
+    let totTd='';
+    if(extraTot){
+      const all=[...Array(18).keys()].filter(i=>g(i)!=null);
+      const tot=all.reduce((s,i)=>s+g(i),0);
+      const diff=tot-all.reduce((s,i)=>s+hs[i].par,0);
+      totTd=`<td class="tt">${all.length?`${tot}<span style="font-size:11px"> ${diff===0?'E':(diff>0?'+':'')+diff}</span>`:''}</td>`;
+    }
+    out+=`<tr><td class="nm">${esc(rowName)}</td>`+idx.map(i=>cell(g(i),hs[i].par)).join('')+`<td class="tt">${seg??''}</td>`+totTd+'</tr>';
+  });
+  return out+'</table></div>';
+}
+function fullScorecardHTML(){
+  const sp=roundSpan();
+  if(sp.count===9){const base=sp.start<9?0:9;return scSegTable(Array.from({length:9},(_,k)=>base+k),'TOT',false);}
+  return scSegTable([...Array(9).keys()],'OUT',false)+'<div style="height:12px"></div>'+scSegTable([9,10,11,12,13,14,15,16,17],'IN',true);
+}
+function openFullCard(){
+  closeFullCard();
+  const d=document.createElement('div');d.id='fullcard';
+  d.style.cssText='position:fixed;inset:0;z-index:85;background:rgba(8,12,22,.88);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:12px';
+  d.onclick=e=>{if(e.target===d)closeFullCard();};
+  d.innerHTML=`<div class="card" style="width:min(470px,96vw);max-height:92vh;overflow-y:auto;margin:0">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0">Scorecard · gross</h2><button class="ghost" onclick="closeFullCard()">✕</button></div>
+    ${fullScorecardHTML()}
+  </div>`;
+  document.body.appendChild(d);
+}
+function closeFullCard(){const d=document.getElementById('fullcard');if(d)d.remove();}
 function scorecardHTML(){
   const hs=S.course.holes;
   const sp=roundSpan();
@@ -4145,7 +4247,7 @@ function vStandings(){
       return `<td class="r num" style="font-size:26px">${tot}</td>`;
     }).join('')}</tr>`).join('')}</table></div>`:'';
   const extra=(thru>0?`
-    <div class="card"><h2>Scorecard · gross strokes</h2>${scorecardHTML()}
+    <div class="card" onclick="openFullCard()" style="cursor:pointer"><h2>Scorecard · gross strokes <span class="tiny" style="font-weight:400">— tap for all 18</span></h2>${scorecardHTML()}
       <div class="tiny mt">Green = under par · amber = bogey · red = double or worse. Swipe the card sideways.</div></div>`:'')+statsCard;
   return topbar('Standings',esc(S.course.name),'','',mapTopBtn())+`<main>${vtabs}${paceLine()}${tables}${extra}
     ${all!=null?`<div class="card"><h2>Hole history (tap to edit)</h2>${hist||'<div class="muted">No holes confirmed yet.</div>'}</div>`:''}
