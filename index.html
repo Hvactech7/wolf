@@ -258,7 +258,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784499147';
+const BUILD='1784500588';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -1616,7 +1616,34 @@ function mapMySc(){
   if(!rec||!rec.gross||rec.gross[mi]==null)return null;
   return (rec.confirmed||(rec.cfts&&rec.cfts[mi]>0))?rec.gross[mi]:null;
 }
-function mapScoreTap(){if(S.round.started&&mapHole!==S.round.cur&&mapMySc()!=null)jumpHole(mapHole);go('hole');}
+function showMapConfirm(){const b=document.getElementById('mapconfirm');if(b)b.style.display='block';}
+function hideMapConfirm(){const b=document.getElementById('mapconfirm');if(b)b.style.display='none';}
+// Confirm from the map: locks in MY score on the viewed hole, mirrors the
+// scoring screen's confirm (per-player in shared rounds, full confirm when
+// everyone's scored otherwise), then the map walks to the next open hole.
+function mapConfirm(){
+  const h=mapHole;
+  let closed=false;
+  set(()=>{
+    const rec=S.round.holes[h];if(!rec)return;
+    const mi=myPlayerIdx(),par=(S.course.holes[h]||{par:4}).par;
+    if(!rec.gts)rec.gts=[0,0,0,0];
+    if(rec.gross[mi]==null){rec.gross[mi]=par;rec.gts[mi]=Date.now();}
+    if(S.share.on){
+      if(!rec.cfts)rec.cfts=[0,0,0,0];
+      myRows().forEach(i=>{if(rec.gross[i]!=null)rec.cfts[i]=Date.now();});
+      if(!rec.confirmed&&actIdx().every(i=>rec.cfts[i]>0)){rec.confirmed=true;closed=true;}
+    }else if(!rec.confirmed&&actIdx().every(i=>rec.gross[i]!=null)){
+      rec.confirmed=true;closed=true;
+    }
+    if(h===S.round.cur&&!isReview()&&(rec.confirmed||S.share.on))advanceToNext();
+    // the map walks forward to the next open hole
+    const o=playOrder();
+    const at=Math.max(0,o.indexOf(h));
+    for(let k=1;k<=o.length;k++){const cand=o[(at+k)%o.length];if(!S.round.holes[cand].confirmed){mapHole=cand;break;}}
+  });
+  if(closed)showSplash(h);
+}
 function myPlayerIdx(){
   let i=S.players.findIndex(p=>p&&p.ownerDev===devId());
   if(i<0&&S.me&&S.me.name)i=S.players.findIndex(p=>p&&(p.name||'').trim().toLowerCase()===S.me.name.trim().toLowerCase());
@@ -1635,6 +1662,7 @@ function mapChScore(d){
   stampChanges();save();syncPush();
   const el=document.getElementById('mapsc');
   if(el)el.textContent=r.gross[myPlayerIdx()];
+  showMapConfirm();
 }
 function vMap(){
   const hole=S.course.holes[mapHole]||{par:4,si:0};
@@ -1653,7 +1681,13 @@ function vMap(){
     `<div style="display:flex;align-items:center;margin-left:auto">${myScore}${gameBadgeHTML()}</div>`)+`
   <div id="holemap"></div>
   <button id="trackbtn" onclick="trackShotTap()" style="position:fixed;left:max(10px,calc(50vw - 230px));bottom:calc(112px + env(safe-area-inset-bottom));z-index:6;width:120px;height:46px;background:var(--card);border:2px solid ${trackShot&&trackShot.hole===mapHole?'var(--amber-bd)':'var(--green)'};border-radius:12px;color:${trackShot&&trackShot.hole===mapHole?'var(--amber-bd)':'var(--green-mid)'};font-family:Rajdhani,Inter,sans-serif;font-weight:700;font-size:19px;letter-spacing:.5px;box-shadow:2px 2px 0 rgba(0,0,0,.35)">${trackShot&&trackShot.hole===mapHole?'Mark Ball':'Track Shot'}</button>
-  <button onclick="mapScoreTap()" style="position:fixed;right:max(10px,calc(50vw - 230px));bottom:calc(112px + env(safe-area-inset-bottom));z-index:6;width:120px;height:46px;background:var(--card);border:2px solid var(--green);border-radius:12px;color:var(--green-mid);font-family:Rajdhani,Inter,sans-serif;font-weight:700;font-size:${mapMySc()!=null?'24':'19'}px;letter-spacing:.5px;box-shadow:2px 2px 0 rgba(0,0,0,.35)">${mapMySc()!=null?mapMySc():'Score'}</button>
+  <button onclick="go('hole')" style="position:fixed;right:max(10px,calc(50vw - 230px));top:calc(100px + env(safe-area-inset-top));z-index:6;background:rgba(15,21,34,.82);border:1.5px solid var(--line);border-radius:10px;color:#fff;padding:8px 14px;font-size:14px;font-weight:600;font-family:inherit">Back</button>
+  <button id="mapconfirm" onclick="mapConfirm()" style="display:none;position:fixed;right:max(10px,calc(50vw - 230px));bottom:calc(166px + env(safe-area-inset-bottom));z-index:6;width:126px;height:46px;background:var(--elec,#2b86ec);background:#2b86ec;border:2px solid var(--elec-dk,#1c5eb0);border-radius:12px;color:#eef6ff;font-family:Rajdhani,Inter,sans-serif;font-weight:700;font-size:19px;box-shadow:2px 2px 0 rgba(0,0,0,.35)">✓ Confirm</button>
+  <div style="position:fixed;right:max(10px,calc(50vw - 230px));bottom:calc(112px + env(safe-area-inset-bottom));z-index:6;display:flex;align-items:center;background:var(--card);border:2px solid var(--green);border-radius:12px;overflow:hidden;box-shadow:2px 2px 0 rgba(0,0,0,.35)">
+    <button onclick="mapChScore(-1)" style="width:42px;height:46px;background:none;border:none;color:var(--elec);font-size:24px;font-weight:800">−</button>
+    <div id="mapsc" class="num" onclick="showMapConfirm()" style="min-width:36px;text-align:center;font-size:26px;cursor:pointer">${(S.round.holes[mapHole]&&S.round.holes[mapHole].gross&&S.round.holes[mapHole].gross[myPlayerIdx()]!=null)?S.round.holes[mapHole].gross[myPlayerIdx()]:hole.par}</div>
+    <button onclick="mapChScore(1)" style="width:42px;height:46px;background:none;border:none;color:var(--elec);font-size:24px;font-weight:800">+</button>
+  </div>
   <div class="mapbar">
     <div class="row" style="border:none;padding:2px 0">
       <button class="ghost" onclick="mapPrev()">◀</button>
@@ -2100,12 +2134,17 @@ function showSplash(h){
   }else render();
 }
 function dismissSplash(){
+  const sh=splash?splash.h:null;
   splash=null;clearTimeout(splashTimer);
   const ms=document.getElementById('mapsplash');if(ms)ms.remove();
-  // if the hole map is open, follow the round to the next unconfirmed hole
+  // if the hole map is open, walk FORWARD from the hole that just finished to
+  // the next open one (never backward to an earlier hole still waiting on
+  // someone's confirm)
   if(S.screen==='map'&&S.round.started){
     const o=playOrder();
-    const nxt=o.find(h=>!S.round.holes[h].confirmed);
+    const at=Math.max(0,o.indexOf(sh!=null?sh:mapHole));
+    let nxt=null;
+    for(let k=1;k<=o.length;k++){const cand=o[(at+k)%o.length];if(!S.round.holes[cand].confirmed){nxt=cand;break;}}
     if(nxt!=null&&nxt!==mapHole){mapHole=nxt;render();}
     return;  // same hole: leave the live map untouched
   }
