@@ -258,7 +258,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784493964';
+const BUILD='1784494511';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -3073,7 +3073,9 @@ function vSetup(){
     const four=NP()===4;
     const cur=S.config.games||[S.config.game];
     const NEED4=['bestball','sixes','umbrella','vegas'];
-    const opts=STACK_GUESTS.filter(g=>g!==S.config.game).map(g=>{
+    // solo round: only the games one player can actually play — hide the rest
+    const SOLO_OK=['stroke','stableford','quota'];
+    const opts=STACK_GUESTS.filter(g=>g!==S.config.game&&(NP()>1||SOLO_OK.includes(g))).map(g=>{
       const on=cur.includes(g);
       let dis='',why='';
       if(NEED4.includes(g)&&!four){dis='disabled';why='needs 4';}
