@@ -1,7 +1,10 @@
 // Wolf service worker — offline cache + auto-update (stale-while-revalidate).
 // The app loads instantly from cache and refreshes in the background; a new
 // version appears the next time it's opened while online.
-const CACHE = 'battletees-1784351935';
+const CACHE = 'battletees-1784490461';
+// Offline course-map pack: satellite tiles cached cache-first, SURVIVES app
+// updates (excluded from the activate cleanup below).
+const TILES = 'bt-tiles';
 const CORE = ['./', 'index.html', 'manifest.json', 'icon-180.png', 'icon-512.png', 'banner.jpg', 'wolf.png', 'wolfwin.png', 'wolfcage.png', 'nine.png', 'vegas.png', 'quota.png', 'sixes.png', 'umbrella.png', 'hammer.png', 'bbb.png', 'stroke.png', 'stableford.png', 'bestball.png', 'scramble.png', 'nassau.png', 'skins.png'];
 
 // Safari refuses to let a service worker answer a page load with a response
@@ -30,14 +33,29 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== TILES).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', (e) => {
   const req = e.request;
-  if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
+  if (req.method !== 'GET') return;
+  const u = new URL(req.url);
+  if (u.origin !== self.location.origin) {
+    // satellite tiles: cache-first so preloaded holes open instantly offline
+    if (u.hostname.endsWith('arcgisonline.com') && u.pathname.includes('/World_Imagery/MapServer/tile/')) {
+      e.respondWith(
+        caches.open(TILES).then((c) =>
+          c.match(req).then((hit) => hit || fetch(req).then((r) => {
+            if (r && (r.status === 200 || r.type === 'opaque')) c.put(req, r.clone());
+            return r;
+          }))
+        )
+      );
+    }
+    return;
+  }
   // The APP shell is only the root document. /welcome/ and /rules/* are their
   // own pages — they must NEVER fall back to the cached app, or a first visit
   // to a rules page serves the app instead.

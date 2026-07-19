@@ -258,7 +258,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784351935';
+const BUILD='1784490461';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -535,6 +535,7 @@ function syncConnect(){
     sock.send(JSON.stringify({t:'join',room:S.share.code}));
     if(S.share.creator)sock.send(JSON.stringify({t:'invite',room:S.share.code,
       info:{course:S.course.name,players:S.players.map(p=>p.name),ts:Date.now()}}));
+    syncPush();  // catch-up: anything edited while offline goes out immediately
     render();
   };
   sock.onmessage=ev=>{
@@ -550,6 +551,11 @@ function scheduleReconnect(){
   if(!S.share||!S.share.on)return;
   setTimeout(()=>{retryMs=Math.min(15000,Math.round(retryMs*1.7));syncConnect();},retryMs);
 }
+// Dead-zone recovery: the instant the radio returns or the app wakes, reconnect
+// NOW instead of waiting out the backoff timer.
+function kickSync(){if(S.share&&S.share.on&&!sock){retryMs=1000;syncConnect();}}
+window.addEventListener('online',kickSync);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)kickSync();});
 // In a shared round, each phone claims the player slot matching its profile
 // name. Claimed rows are score-locked on OTHER phones (tap ✎ to override).
 function claimMySlot(steal){
@@ -650,10 +656,19 @@ function grabCoords(){
 }
 function saveMe(){
   const n=document.getElementById('meName'),x=document.getElementById('meIdx'),e=document.getElementById('meEmail');
+  const err=document.getElementById('meErr');
   const name=(n&&n.value||'').trim();
-  if(!name)return;
+  if(!name){
+    if(n)n.style.borderColor='var(--red)';
+    if(err)err.textContent='Enter your name first — that’s all you need.';
+    return;
+  }
   const em=(e&&e.value||'').trim();
-  if(em&&!/^\S+@\S+\.\S+$/.test(em)){if(e)e.style.borderColor='var(--red)';return;}
+  if(em&&!/^\S+@\S+\.\S+$/.test(em)){
+    if(e)e.style.borderColor='var(--red)';
+    if(err)err.textContent='That email doesn’t look right — fix it or leave it blank.';
+    return;
+  }
   if(em)try{localStorage.setItem('wolfBackupEmail',em);}catch(x2){}
   set(()=>{
     S.me={name,index:+((x&&x.value)||10)||10};
@@ -670,7 +685,12 @@ function saveEditMe(){
   const name=(n&&n.value||'').trim();
   if(!name){editingMe=false;render();return;}
   const em=(e&&e.value||'').trim();
-  if(em&&!/^\S+@\S+\.\S+$/.test(em)){if(e)e.style.borderColor='var(--red)';return;}
+  if(em&&!/^\S+@\S+\.\S+$/.test(em)){
+    if(e)e.style.borderColor='var(--red)';
+    const err=document.getElementById('meEErr');
+    if(err)err.textContent='That email doesn’t look right — fix it or leave it blank.';
+    return;
+  }
   if(em)try{localStorage.setItem('wolfBackupEmail',em);}catch(x2){}
   const old=S.me.name;
   editingMe=false;
@@ -1580,6 +1600,61 @@ function splinePath(path){
 // (Golfbert-sourced: fairway-bent hole lines, greens, bunkers, water).
 // Fetched once, cached in course geo like OSM data — no runtime API calls.
 const HOSTED_GEO={'rancho-solano':'geo/rancho-solano.json?v=3','lake-chabot':'geo/lake-chabot.json?v=1'};
+// ---------- offline tile pack ----------
+// Pre-downloads the satellite tiles for every hole view into the SW's bt-tiles
+// cache, so each hole opens instantly even with no signal on the course.
+const TILE_URL=(z,x,y)=>`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+function tileXY(lat,lon,z){
+  const n=Math.pow(2,z),la=lat*Math.PI/180;
+  return [Math.floor((lon+180)/360*n),
+          Math.floor((1-Math.log(Math.tan(la)+1/Math.cos(la))/Math.PI)/2*n)];
+}
+function courseTileList(){
+  const geo=S.course.geo;if(!geo||!geo.holes)return [];
+  const urls=new Set();
+  Object.values(geo.holes).forEach(h=>{
+    const pts=(h.path||[]).concat(h.green||[]);
+    if(pts.length<2)return;
+    let lat1=90,lat2=-90,lon1=180,lon2=-180;
+    pts.forEach(p=>{lat1=Math.min(lat1,p[0]);lat2=Math.max(lat2,p[0]);lon1=Math.min(lon1,p[1]);lon2=Math.max(lon2,p[1]);});
+    const dla=(lat2-lat1)||.001,dlo=(lon2-lon1)||.001;
+    lat1-=dla*.45;lat2+=dla*.45;lon1-=dlo*.45;lon2+=dlo*.45;   // rotation + margin headroom
+    const midLat=(lat1+lat2)/2;
+    const Lm=Math.max(mDist([lat1,lon1],[lat2,lon1]),mDist([lat1,lon1],[lat1,lon2]),120);
+    const zc=Math.round(Math.log2(156543.03392*Math.cos(midLat*Math.PI/180)/(Lm/600)));
+    for(let z=Math.max(15,zc-1);z<=Math.min(19,zc+1);z++){
+      const [xa,yb]=tileXY(lat1,lon1,z),[xb,ya]=tileXY(lat2,lon2,z);
+      const x1=Math.min(xa,xb),x2=Math.max(xa,xb),y1=Math.min(ya,yb),y2=Math.max(ya,yb);
+      if((x2-x1+1)*(y2-y1+1)>48)continue;   // sanity cap per hole/zoom
+      for(let x=x1;x<=x2;x++)for(let y=y1;y<=y2;y++)urls.add(TILE_URL(z,x,y));
+    }
+  });
+  return [...urls];
+}
+let tilePre={busy:false,done:0,total:0};
+function tilePackFresh(){
+  try{const st=JSON.parse(localStorage['btTiles-'+S.course.id]||'null');
+    return !!(st&&st.gts===(S.course.geo&&S.course.geo.ts||0)&&Date.now()-st.at<7*864e5);}catch(e){return false;}
+}
+async function preloadCourseTiles(manual){
+  if(tilePre.busy)return;
+  if(!manual&&tilePackFresh())return;
+  const urls=courseTileList();
+  if(!urls.length)return;
+  tilePre={busy:true,done:0,total:urls.length};updateTileBtn();
+  let i=0;
+  await Promise.all(Array.from({length:6},async()=>{   // 6-wide fetch pool; SW caches each tile
+    while(i<urls.length){const u=urls[i++];try{await fetch(u,{mode:'no-cors'});}catch(e){}tilePre.done++;if(tilePre.done%10===0||tilePre.done===tilePre.total)updateTileBtn();}
+  }));
+  tilePre.busy=false;
+  try{localStorage['btTiles-'+S.course.id]=JSON.stringify({at:Date.now(),gts:S.course.geo&&S.course.geo.ts||0,n:urls.length});}catch(e){}
+  updateTileBtn();
+}
+function updateTileBtn(){
+  const el=document.getElementById('tilebtn');if(!el)return;
+  el.textContent=tilePre.busy?`⬇ Downloading maps… ${tilePre.done}/${tilePre.total}`
+    :tilePackFresh()?'✓ Offline maps ready — tap to refresh':'⬇ Download offline hole maps';
+}
 async function ensureCourseGeo(){
   const hostedUrl=HOSTED_GEO[S.course.id];
   if(hostedUrl){
@@ -1589,6 +1664,7 @@ async function ensureCourseGeo(){
         const js=await r.json();
         if(js&&js.holes&&Object.keys(js.holes).length){
           set(()=>{S.course.geo={ts:Date.now(),holes:js.holes};});
+          preloadCourseTiles(false);   // fire-and-forget: grab the tile pack while we have signal
           return;
         }
       }
@@ -2105,6 +2181,7 @@ function vHome(){
     </div>
     <div class="mt"><div class="tiny">Email</div><input type="text" inputmode="email" autocapitalize="off" id="meEmail" placeholder="you@email.com" value="${esc(localStorage.getItem('wolfBackupEmail')||'')}">
       <div class="tiny mt">Your players, courses &amp; round history back up automatically — and you can restore them on any phone.</div></div>
+    <div id="meErr" class="tiny mt" style="color:var(--red);font-weight:600"></div>
     <button class="big mt" onclick="saveMe()">Save profile</button>
   </div>`:''}
   ${!S.share.on?invites.map(inv=>`<div class="card" style="border-color:var(--amber);background:#fffcf7">
@@ -2287,6 +2364,7 @@ function vGate(){
     </div>
     <div class="mt"><div class="tiny">Email</div><input type="text" inputmode="email" autocapitalize="off" id="meEmail" placeholder="you@email.com" value="${esc(localStorage.getItem('wolfBackupEmail')||'')}">
       <div class="tiny mt">Backs up your players, courses &amp; rounds automatically.</div></div>
+    <div id="meErr" class="tiny mt" style="color:var(--red);font-weight:600"></div>
     <button class="big mt" onclick="saveMe()">Save profile</button></div>`:''}
   ${invites.map(inv=>`<div class="card" style="border-color:var(--amber)">
     <h2 style="color:var(--amber)">⚔️ Join this group</h2>
@@ -2530,6 +2608,7 @@ function vPlayers(){
             <div><div class="tiny">Handicap index</div><input id="meEIdx" type="text" inputmode="decimal" value="${S.me.index}"></div>
           </div>
           <div class="mt"><div class="tiny">Email — backups &amp; restore</div><input id="meEEmail" type="text" inputmode="email" autocapitalize="off" placeholder="you@email.com" value="${esc(localStorage.getItem('wolfBackupEmail')||'')}"></div>
+          <div id="meEErr" class="tiny mt" style="color:var(--red);font-weight:600"></div>
         </div>
       </div>
       <div class="row" style="border-top:none">
@@ -2893,7 +2972,9 @@ function vCourse(){
   return topbar('Course setup','','courses')+`<main>
   ${c._note?`<div class="banner ${c._noteOk?'ok':'wolf'}">${c._noteOk?'✓ ':''}${esc(c._note)} <button class="ghost" style="margin-left:6px" onclick="set(()=>{delete S.course._note;delete S.course._noteOk;})">Got it</button></div>`:''}
   <div class="card"><h2>Name</h2><input type="text" value="${esc(c.name)}" onchange="set(()=>S.course.name=this.value)" oninput="S.course.name=this.value;save()">
-    ${c.geo?`<button class="ghost mt" onclick="set(()=>delete S.course.geo)">Clear downloaded hole-map data</button>
+    ${c.geo?`<button class="ghost mt" id="tilebtn" onclick="preloadCourseTiles(true)">${tilePackFresh()?'✓ Offline maps ready — tap to refresh':'⬇ Download offline hole maps'}</button>
+    <div class="tiny mt">Grab the satellite tiles on wifi and every hole opens instantly, even with no signal on the course.</div>
+    <button class="ghost mt" onclick="set(()=>delete S.course.geo)">Clear downloaded hole-map data</button>
     <div class="tiny mt">Use this if the satellite map shows the wrong course — it re-downloads at the course next time.</div>`:''}</div>
   <div class="card"><h2>Tee sets — name · rating · slope</h2>${tees}
     <button class="ghost mt" onclick="addTee()">Add tee set</button>
@@ -3121,7 +3202,15 @@ function vSetup(){
   <button class="big" onclick="startPick()">Next — pick the course →</button>
   </main>`;
 }
-function tapClear(el){el.dataset.prev=el.value;el.value='';}
+// Clear a prefilled field on focus — but give the value BACK if the user
+// leaves without typing (re-focusing a field must never eat your input).
+function tapClear(el){
+  el.dataset.prev=el.value;el.value='';
+  el.addEventListener('blur',function h(){
+    el.removeEventListener('blur',h);
+    if(!el.value.trim()&&el.dataset.prev)el.value=el.dataset.prev;
+  });
+}
 function commitPl(el,i,k){
   let v=el.value.trim();
   if(v===''&&k!=='chOverride')v=el.dataset.prev||'';
@@ -3178,6 +3267,7 @@ function startRound(){
   pickingCourse=false;
   const withNearby=S.players.some(p=>p.nearby);
   stView=null;
+  setTimeout(()=>preloadCourseTiles(false),1500);  // quiet tile-pack top-up while signal is good
   set(()=>{S.round=blankRound();S.round.started=true;S.round.game=S.config.game;
     S.round.games=(S.config.games&&S.config.games.length?S.config.games.slice():[S.config.game]).filter((g,i,a)=>a.indexOf(g)===i);
     S.round.rates=S.round.rates||{};
@@ -3315,7 +3405,7 @@ function vHole(){
         :`<button class="big" ${done?'':'disabled'} onclick="confirmHole()">Confirm hole</button>`}
     `;
   }
-  return topbar(`Hole ${h+1} · Par ${hole.par}`,`Handicap ${hole.si}${S.share.on?` · ${esc(S.share.code)} ${sockOpen?'●':'○'}`:''}`,'','hero',gameBadgeHTML())+`<main>
+  return topbar(`Hole ${h+1} · Par ${hole.par}`,`Handicap ${hole.si}${S.share.on?` · ${esc(S.share.code)} ${sockOpen?'●':'○ will sync'}`:''}`,'','hero',gameBadgeHTML())+`<main>
     ${reviewBanner()}${runningTotalsCard()}
     <div class="wolfcard">
       <div style="flex:1;min-width:0"><b>${esc(names[rec.wolfAt??wolf])} is the Wolf</b>
@@ -3519,7 +3609,7 @@ function vHoleNines(){
       ?`${isReview()?'':`<button class="big" onclick="nextHole()">${posOf(h)<playOrder().length-1?'Next hole →':'Finish round'}</button>`}
         <button class="ghost mt" style="width:100%" onclick="unconfirm()">Edit this hole</button>`
       :`<button class="big" ${done?'':'disabled'} onclick="confirmHole()">Confirm hole</button>`}`;
-  return topbar(`Hole ${h+1} · Par ${hole.par}`,`Handicap ${hole.si}${S.share.on?` · ${esc(S.share.code)} ${sockOpen?'●':'○'}`:''}`,'','hero',gameBadgeHTML())+`<main>
+  return topbar(`Hole ${h+1} · Par ${hole.par}`,`Handicap ${hole.si}${S.share.on?` · ${esc(S.share.code)} ${sockOpen?'●':'○ will sync'}`:''}`,'','hero',gameBadgeHTML())+`<main>
     ${reviewBanner()}${runningTotalsCard()}
     ${isN?`<div class="ninecard">
       <div style="flex:1;min-width:0"><b>9 points on this hole</b>
@@ -3594,7 +3684,7 @@ function vHoleVegas(){
           <div class="stepper mini"><button onclick="chStat('${k}',${i},-1)">−</button><span class="val num">${v}</span><button onclick="chStat('${k}',${i},1)">+</button></div></div>`;
       }).join('')}</div></div>`;}).join('')}
   </div>`:'';
-  return topbar(`Hole ${h+1} · Par ${hole.par}`,`Handicap ${hole.si}${S.share.on?` · ${esc(S.share.code)} ${sockOpen?'●':'○'}`:''}`,'','hero',gameBadgeHTML())+`<main>
+  return topbar(`Hole ${h+1} · Par ${hole.par}`,`Handicap ${hole.si}${S.share.on?` · ${esc(S.share.code)} ${sockOpen?'●':'○ will sync'}`:''}`,'','hero',gameBadgeHTML())+`<main>
     ${reviewBanner()}${runningTotalsCard()}
     <div class="vegascard">
       <div style="flex:1;min-width:0"><b>Vegas — low number wins the difference</b>
@@ -3627,7 +3717,7 @@ function vHoleScramble(){
       </div>
     </div>`;}).join('');
   const done=capt.every(i=>rec.gross[i]!=null);
-  return topbar(`Hole ${h+1} · Par ${hole.par}`,`Handicap ${hole.si}${S.share.on?` · ${esc(S.share.code)} ${sockOpen?'●':'○'}`:''}`,'','hero',gameBadgeHTML())+`<main>
+  return topbar(`Hole ${h+1} · Par ${hole.par}`,`Handicap ${hole.si}${S.share.on?` · ${esc(S.share.code)} ${sockOpen?'●':'○ will sync'}`:''}`,'','hero',gameBadgeHTML())+`<main>
     ${reviewBanner()}${runningTotalsCard()}
     <div class="card">
       <div class="tiny mb">${T.length===1?'One ball for the whole group — the official tournament card.':'One score per team — everyone plays from the best shot.'}</div>
