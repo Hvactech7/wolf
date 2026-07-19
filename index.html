@@ -258,7 +258,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784495305';
+const BUILD='1784496336';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -1569,15 +1569,21 @@ function mapChScore(d){
 }
 function vMap(){
   const hole=S.course.holes[mapHole]||{par:4,si:0};
-  const rec=S.round.holes[mapHole];
-  const mySc=rec&&rec.gross&&rec.gross[myPlayerIdx()]!=null?rec.gross[myPlayerIdx()]:hole.par;
-  return topbar(`Hole ${mapHole+1} · Par ${hole.par}`,`Handicap ${hole.si}`,'hole','hero maphero',gameBadgeHTML())+`
+  // my running score, top-right where Back used to live: to-par big, strokes small
+  let myTot=0,myPar=0;
+  if(S.round.started){
+    const mi=myPlayerIdx();
+    playOrder().forEach(hh=>{const r=S.round.holes[hh];
+      if(r&&r.confirmed&&r.gross&&r.gross[mi]!=null){myTot+=r.gross[mi];myPar+=(S.course.holes[hh]||{par:4}).par;}});
+  }
+  const d=myTot-myPar;
+  const myScore=myPar>0?`<div style="text-align:center;flex:none;margin:0 14px 0 10px">
+    <div class="num" style="font-size:38px;line-height:1;font-weight:700;color:${d<0?'#7fd49a':d>0?'var(--amber-bd)':'var(--ink)'};text-shadow:0 0 10px rgba(0,0,0,.5)">${d===0?'E':(d>0?'+':'')+d}</div>
+    <div class="tiny" style="color:var(--ink2);white-space:nowrap;font-size:12px">${myTot} strokes</div></div>`:'';
+  return topbar(`Hole ${mapHole+1} · Par ${hole.par}`,`Handicap ${hole.si}`,'','hero maphero',
+    `<div style="display:flex;align-items:center;margin-left:auto">${myScore}${gameBadgeHTML()}</div>`)+`
   <div id="holemap"></div>
-  <div style="position:fixed;right:max(10px,calc(50vw - 230px));bottom:calc(112px + env(safe-area-inset-bottom));z-index:6;display:flex;align-items:center;background:var(--card);border:2px solid var(--green);border-radius:12px;overflow:hidden;box-shadow:2px 2px 0 rgba(0,0,0,.35)">
-    <button onclick="mapChScore(-1)" style="width:42px;height:46px;background:none;border:none;color:var(--elec);font-size:24px;font-weight:800">−</button>
-    <div id="mapsc" class="num" style="min-width:36px;text-align:center;font-size:26px">${mySc}</div>
-    <button onclick="mapChScore(1)" style="width:42px;height:46px;background:none;border:none;color:var(--elec);font-size:24px;font-weight:800">+</button>
-  </div>
+  <button onclick="go('hole')" style="position:fixed;right:max(10px,calc(50vw - 230px));bottom:calc(112px + env(safe-area-inset-bottom));z-index:6;width:120px;height:46px;background:var(--card);border:2px solid var(--green);border-radius:12px;color:var(--green-mid);font-family:Rajdhani,Inter,sans-serif;font-weight:700;font-size:19px;letter-spacing:.5px;box-shadow:2px 2px 0 rgba(0,0,0,.35)">Score</button>
   <div class="mapbar">
     <div class="row" style="border:none;padding:2px 0">
       <button class="ghost" onclick="mapPrev()">◀</button>
