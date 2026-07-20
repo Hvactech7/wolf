@@ -258,7 +258,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784506568';
+const BUILD='1784507732';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -2616,13 +2616,16 @@ function vGate(){
     :`<div class="tiny mt">Group's full \u2014 remove someone to make a swap.</div>`}
   </div>
   <div class="card"><h2>\u2694\ufe0f Group name</h2>
-    <input type="text" value="${esc(S.config.groupName||'')}" placeholder="e.g. The Wolf Pack \u2014 optional" oninput="S.config.groupName=this.value;save()" onchange="set(()=>S.config.groupName=this.value)">
-    <div class="tiny mt">Joiners see the name, and a named group saves automatically \u2014 one tap fills the same crew next time.</div>
+    <input type="text" value="${esc(S.config.groupName||'')}" placeholder="e.g. The Wolf Pack \u2014 optional" oninput="S.config.groupName=this.value;save()" onchange="groupNameCommit(this.value)">
+    ${(()=>{const nm=(S.config.groupName||'').trim();
+      if(!nm||(S.groupLib||[]).some(g3=>g3.name.trim().toLowerCase()===nm.toLowerCase()))return '';
+      return `<button class="ghost mt" style="width:100%" onclick="openGroupCreate()">\uff0b Create \u201c${esc(nm)}\u201d \u2014 pick the players</button>`;})()}
+    <div class="tiny mt">Type a name to start a group \u2014 an existing name loads that crew. Named groups save automatically.</div>
     ${(S.groupLib&&S.groupLib.length)?`<div class="mt" style="display:flex;flex-wrap:wrap;gap:6px">${S.groupLib.map(g2=>grpEdit
-        ?`<button class="ghost danger" onclick="delGroup('${g2.id}')">\u2715 ${esc(g2.name)}</button>`
+        ?`<span style="display:inline-flex;gap:4px"><button class="ghost" onclick="openGroupEditor('${g2.id}')">\u270e ${esc(g2.name)}</button><button class="ghost danger" onclick="delGroup('${g2.id}')">\u2715</button></span>`
         :`<button class="ghost ${(S.config.groupName||'').trim().toLowerCase()===g2.name.trim().toLowerCase()?'sel':''}" onclick="loadGroup('${g2.id}')">\u2694\ufe0f ${esc(g2.name)} <span class="tiny">(${g2.members.length})</span></button>`).join('')}
       <button class="ghost ${grpEdit?'sel':''}" onclick="toggleGrpEdit()">${grpEdit?'Done':'\ud83d\uddd1'}</button></div>
-      ${grpEdit?`<div class="tiny mt" style="color:var(--red);font-weight:600">Tap a group to delete it \u2014 then tap Done.</div>`:''}`:''}
+      ${grpEdit?`<div class="tiny mt" style="color:var(--red);font-weight:600">\u270e edits a group \u00b7 \u2715 deletes it \u2014 then tap Done.</div>`:''}`:''}
     ${duos.length>=2?`<div class="tiny mt" style="font-weight:600">\ud83e\udd1d 2 v 2 \u2014 pair two duos</div>
       <div class="grid2 mt" style="gap:6px;min-width:0">
         <select id="duoA" style="width:100%;min-width:0;max-width:100%">${duos.map(g2=>`<option value="${g2.id}">${esc(g2.name)} \u2014 ${g2.members.map(m=>esc(m.name.split(' ')[0])).join(' & ')}</option>`).join('')}</select>
@@ -2849,7 +2852,7 @@ function groupsCardHTML(){
   return `<div class="card"><h2>⚔️ Groups</h2>
     ${G.map(g2=>`<div class="row"><div style="flex:1;min-width:0"><b>${esc(g2.name)}</b>
       <div class="tiny">${g2.members.map(m=>esc(m.name)).join(' · ')}</div></div>
-      <button class="ghost danger" onclick="delGroup('${g2.id}')">✕</button></div>`).join('')}
+      <span style="display:flex;gap:6px;flex:none"><button class="ghost" onclick="openGroupEditor('${g2.id}')">✎</button><button class="ghost danger" onclick="delGroup('${g2.id}')">✕</button></span></div>`).join('')}
     <div class="tiny mt">Name a group in Round setup to save it — tap it there to reload the whole crew.</div>
   </div>`;
 }
@@ -3304,7 +3307,7 @@ function vSetup(){
   return topbar(`Round setup — ${gameName(S.config.game)}${stackN>1?` +${stackN-1}`:''}`,SUBS[S.config.game]||'Order = tee order on hole 1 (wolf rotation)','gate')+`<main>
   <button class="ghost" style="width:100%;margin-bottom:12px" onclick="go('gate')">⚔️ Edit group — add or remove golfers</button>
   ${rows}
-  ${(STACKABLE.includes(S.config.game)||S.config.game==='wolf')?(()=>{
+  ${(STACKABLE.includes(S.config.game)||S.config.game==='wolf'||S.config.game==='vegas')?(()=>{
     const four=NP()===4;
     const cur=S.config.games||[S.config.game];
     const NEED4=['bestball','sixes','umbrella','vegas'];
@@ -3586,6 +3589,85 @@ function delGroup(id){set(()=>{
 });}
 let grpEdit=false;
 function toggleGrpEdit(){grpEdit=!grpEdit;render();}
+// full-membership editor: name + checkbox roster from the player library (2-4)
+let grpEditTarget=null;
+function openGroupEditor(id){
+  const g2=(S.groupLib||[]).find(x=>x.id===id);if(!g2)return;
+  grpEditTarget={id,name:g2.name,sel:new Set(g2.members.map(m=>m.name.trim().toLowerCase()))};
+  renderGroupEditor();
+}
+function renderGroupEditor(){
+  const t=grpEditTarget;
+  const ex=document.getElementById('grpeditor');if(ex)ex.remove();
+  if(!t)return;
+  const g2=t.id?(S.groupLib||[]).find(x=>x.id===t.id):null;
+  const cand=[...(S.playerLib||[])];
+  (g2?g2.members:[]).forEach(m=>{if(!cand.some(e=>e.name.trim().toLowerCase()===m.name.trim().toLowerCase()))cand.push({id:'tmp',name:m.name,index:m.index});});
+  const full=t.sel.size>=4;
+  const ok=t.sel.size>=2&&t.sel.size<=4;
+  const d=document.createElement('div');d.id='grpeditor';
+  d.style.cssText='position:fixed;inset:0;z-index:88;background:rgba(8,12,22,.88);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:14px';
+  d.onclick=e=>{if(e.target===d)closeGroupEditor();};
+  d.innerHTML=`<div class="card" style="width:min(440px,96vw);max-height:90vh;overflow-y:auto;margin:0">
+    <h2>${t.id?'✎ Edit group':'＋ New group'}</h2>
+    <div class="tiny">Group name</div>
+    <input type="text" id="grpEdName" value="${esc(t.name)}">
+    <div class="tiny mt mb">Who's in — check 2 to 4 <b>(${t.sel.size} picked)</b></div>
+    ${cand.map(e=>{
+      const on=t.sel.has(e.name.trim().toLowerCase());
+      const dis=!on&&full;
+      return `<div class="row" style="cursor:pointer;${dis?'opacity:.4':''}" onclick="grpEdToggle('${esc(e.name.trim().toLowerCase())}')">
+        <div><b>${esc(e.name)}</b><div class="tiny">Index ${e.index}</div></div>
+        <input type="checkbox" style="width:24px;height:24px;accent-color:var(--elec);pointer-events:none" ${on?'checked':''}>
+      </div>`;}).join('')}
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="big" style="flex:1;margin:0" ${ok?'':'disabled'} onclick="saveGroupEdit()">Save group</button>
+      <button class="ghost" onclick="closeGroupEditor()">Cancel</button>
+    </div>
+  </div>`;
+  document.body.appendChild(d);
+}
+function grpEdToggle(nameLow){
+  const t=grpEditTarget;if(!t)return;
+  const nmEl=document.getElementById('grpEdName');if(nmEl)t.name=nmEl.value;
+  if(t.sel.has(nameLow))t.sel.delete(nameLow);
+  else if(t.sel.size<4)t.sel.add(nameLow);
+  renderGroupEditor();
+}
+function saveGroupEdit(){
+  const t=grpEditTarget;if(!t)return;
+  const nmEl=document.getElementById('grpEdName');
+  const name=((nmEl&&nmEl.value)||t.name||'').trim();
+  if(t.sel.size<2||t.sel.size>4||!name)return;
+  let newId=null;
+  set(()=>{
+    let g2=t.id?(S.groupLib||[]).find(x=>x.id===t.id):null;
+    if(!g2){g2={id:'gr'+Date.now(),name,members:[],at:Date.now()};(S.groupLib=S.groupLib||[]).push(g2);newId=g2.id;}
+    const pool=[...g2.members,...(S.playerLib||[]).map(e=>({name:e.name,index:e.index}))];
+    g2.members=[...t.sel].map(k=>{
+      const e=pool.find(x=>x.name.trim().toLowerCase()===k);
+      return {name:e?e.name:k,index:e?e.index:10,tee:e&&e.tee};
+    });
+    if((S.config.groupName||'').trim().toLowerCase()===g2.name.trim().toLowerCase())S.config.groupName=name;
+    g2.name=name;g2.at=Date.now();
+  });
+  const wantLoad=t.loadOnSave,gid=newId||t.id;
+  closeGroupEditor();
+  if(wantLoad&&gid)loadGroup(gid);
+}
+function closeGroupEditor(){const d=document.getElementById('grpeditor');if(d)d.remove();grpEditTarget=null;}
+function groupNameCommit(v){
+  set(()=>{S.config.groupName=v;});
+  const nm=(v||'').trim().toLowerCase();
+  const ex=nm?(S.groupLib||[]).find(g2=>g2.name.trim().toLowerCase()===nm):null;
+  if(ex)loadGroup(ex.id);
+}
+function openGroupCreate(){
+  const nm=(S.config.groupName||'').trim();if(!nm)return;
+  const meLow=(S.me&&S.me.name||'').trim().toLowerCase();
+  grpEditTarget={id:null,name:nm,sel:new Set(meLow?[meLow]:[]),loadOnSave:true};
+  renderGroupEditor();
+}
 // ---------- group builder ----------
 let addMode=null,dismissedInvites=new Set();
 function dismissInvite(code){dismissedInvites.add(code);render();}
@@ -4096,11 +4178,20 @@ function vHoleVegas(){
       ${t.map(scoreRow).join('')}
     </div>`;
   }).join('');
-  const ctpOn=S.config.vegas.ctp&&hole.par===3;
-  const ctpRow=ctpOn?`<div class="card"><h2>Closest to pin (+1 pt)</h2>
+  const ctpOn=(S.config.vegas.ctp&&hole.par===3)||stackHas('umbrella');
+  const ctpRow=ctpOn?`<div class="card"><h2>Closest to pin${stackHas('umbrella')?' — umbrella point':' (+1 pt)'}</h2>
     <div class="flexwrap">${[0,1,2,3].map(i=>`<button class="ghost ${rec.ctp===i?'sel':''}" onclick="setCtp(${i})">${esc(S.players[i].name)}</button>`).join('')}
     <button class="ghost ${rec.ctp===-1?'sel':''}" onclick="setCtp(-1)">No one on green</button></div></div>`:'';
-  const done=[0,1,2,3].every(i=>rec.gross[i]!=null)&&(!ctpOn||rec.ctp!=null);
+  // vegas can host a stack: guest games ride along like they do on wolf holes
+  const hamSt=hammerOn()?hamState(rec):null;
+  const hamCard=hammerOn()?hammerCardHTML():'';
+  const nasCard=stackHas('nassau')?nassauCardHTML():'';
+  const skCard=stackHas('skins')?skinsCardHTML():'';
+  const bbbOn=stackHas('bbb');
+  const bbbCard=bbbOn?bbbCardHTML(rec,actIdx()):'';
+  let done=[0,1,2,3].every(i=>rec.gross[i]!=null)&&(!ctpOn||rec.ctp!=null)
+    &&(!bbbOn||(rec.bbb&&['bingo','bango','bongo'].every(k=>rec.bbb[k]!=null)));
+  if(hamSt){if(hamSt.pend>=0)done=false;}
   let resultNote='';
   if(rec.confirmed){
     resultNote=activeLenses().map(LL=>{
@@ -4128,7 +4219,7 @@ function vHoleVegas(){
       <img class="vegas-art" src="${art('vegas.png')}" alt="" onerror="this.outerHTML='<span style=&quot;font-size:34px&quot;>🎲</span>'">
     </div>
     ${[0,1,2,3].some(i=>rec.gross[i]==null)?`<button class="ghost mb" style="width:100%" onclick="set(()=>prefillNines(${h}))">Everyone to par ${hole.par} — adjust from there</button>`:''}
-    ${teamBoxes}${ctpRow}${extrasCard}${resultNote}
+    ${teamBoxes}${hamCard}${nasCard}${skCard}${bbbCard}${ctpRow}${extrasCard}${resultNote}
     ${rec.confirmed
       ?`${isReview()?'':`<button class="big" onclick="nextHole()">${posOf(h)<playOrder().length-1?'Next hole →':'Finish round'}</button>`}
         <button class="ghost mt" style="width:100%" onclick="unconfirm()">Edit this hole</button>`
