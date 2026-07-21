@@ -258,7 +258,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784658424';
+const BUILD='1784658686';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -444,6 +444,14 @@ function load(){
       // installs predating a new builtin course never get it from the _v migration
       // below (it only refreshes matching ids) — append what's missing, every load
       builtinCourses().forEach(fc=>{if(!s.courses.some(c=>c.id===fc.id))s.courses.push(clone(fc));});
+      // stored copies saved before builtins carried loc never got it (append only adds
+      // MISSING ids) — without loc a course can't rank in the nearest-5 sort. Backfill.
+      builtinCourses().forEach(fc=>{
+        if(!fc.loc)return;
+        const c=s.courses.find(x=>x.id===fc.id);
+        if(c&&!c.loc)c.loc=fc.loc;
+        if(s.course.id===fc.id&&!s.course.loc)s.course.loc=fc.loc;
+      });
       // hand-made lookalikes of builtins (created before the builtin shipped) shadow
       // them in the list and miss hosted geo — drop any non-builtin whose normalized
       // name matches a builtin, EXCEPT the active course mid-round (re-scoring risk;
