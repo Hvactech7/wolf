@@ -258,7 +258,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784621254';
+const BUILD='1784658424';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -354,6 +354,22 @@ function courseDarkHorse(){return {id:'darkhorse',name:'DarkHorse GC',loc:[39.02
 function builtinCourses(){return [courseTealBend(),courseRanchoSolano(),courseDarkHorse(),courseHiddenbrooke(),courseLakeChabot(),courseParadiseValley(),courseGreenValley(),courseSilveradoNorth(),courseDavis(),courseElMacero(),courseWildhorse(),courseWildWings(),courseDiabloCreek(),courseBartleyCavanaugh(),courseYochaDehe(),courseFranklinCanyon(),courseBoundaryOak()];}
 function clone(o){return JSON.parse(JSON.stringify(o));}
 function defaultCourse(){return courseTealBend();}
+// "Paradise Valley GC" / "Paradise Valley Golf Course" / "paradise valley country club"
+// all normalize to "paradise valley" — the filler words never distinguish two real courses
+function normCourseName(n){
+  return (n||'').toLowerCase().replace(/[^a-z0-9 ]/g,' ')
+    .replace(/\b(golf|course|club|links|country|cc|gc|the|at)\b/g,'')
+    .replace(/\s+/g,' ').trim();
+}
+// display order for course lists: nearest 5 by GPS first, the rest alphabetical.
+// returns [{c,i,mi}] with i = index into S.courses (pickCourse/delCourse contract)
+function courseDisplayOrder(){
+  const all=S.courses.map((c,i)=>({c,i,mi:(myCoords&&c.loc)?kmBetween(myCoords[0],myCoords[1],c.loc[0],c.loc[1])*0.621371:null}));
+  const near=all.filter(x=>x.mi!=null).sort((a,b)=>a.mi-b.mi).slice(0,5);
+  const nearIds=new Set(near.map(x=>x.c.id));
+  const rest=all.filter(x=>!nearIds.has(x.c.id)).sort((a,b)=>a.c.name.localeCompare(b.c.name));
+  return {near,rest};
+}
 function defaultConfig(){
   return {
     lens:'net', allowance:100, carryTies:false, last2LastPlace:true, _v:3,
@@ -428,6 +444,25 @@ function load(){
       // installs predating a new builtin course never get it from the _v migration
       // below (it only refreshes matching ids) — append what's missing, every load
       builtinCourses().forEach(fc=>{if(!s.courses.some(c=>c.id===fc.id))s.courses.push(clone(fc));});
+      // hand-made lookalikes of builtins (created before the builtin shipped) shadow
+      // them in the list and miss hosted geo — drop any non-builtin whose normalized
+      // name matches a builtin, EXCEPT the active course mid-round (re-scoring risk;
+      // it cleans up on the next load after the round ends)
+      {
+        const bids=new Set(builtinCourses().map(c=>c.id));
+        const bnames=new Map(builtinCourses().map(c=>[normCourseName(c.name),c.id]));
+        s.courses=s.courses.filter(c=>{
+          if(bids.has(c.id))return true;
+          const twin=bnames.get(normCourseName(c.name));
+          if(!twin)return true;
+          if(c.id===s.course.id){
+            if(s.round.started)return true;
+            const b=s.courses.find(x=>x.id===twin)||builtinCourses().find(x=>x.id===twin);
+            s.course=clone(b);
+          }
+          return false;
+        });
+      }
       if((s.config._v||2)<3){
         s.config._v=3;
         const fresh=builtinCourses();
@@ -2725,12 +2760,7 @@ function ruleCard(art,title,tag,body){
 function vPickCourse(){
   return topbar(`Where are you playing?`,`${gameName(S.config.game)} · ${actIdx().map(i=>esc((S.players[i].name||'').split(' ')[0])).join(', ')}`,'setup')+`<main>
   <div class="card"><h2>Pick the course</h2>
-    ${S.courses.map((c,i)=>{
-      const par=c.holes.reduce((a,h)=>a+h.par,0);
-      const active=c.id===S.course.id;
-      return `<div class="row" onclick="pickCourse(${i})" style="cursor:pointer;${active?'background:var(--green-lt);border-radius:10px;padding:9px 12px;border-top:none;margin:2px 0':''}">
-        <div><b${active?' style="color:var(--green)"':''}>${active?'✓ ':''}${esc(c.name)}</b><div class="tiny">Par ${par}</div></div>
-      </div>`;}).join('')}
+    ${courseListHTML(true)}
     ${courseFinderHTML(true)}
   </div>
   <button class="big" onclick="startRound()">Start round — ${esc(S.course.name)}</button>
@@ -2963,17 +2993,36 @@ function courseFinderHTML(noBlank){
       <div style="display:flex;gap:6px"><button class="ghost" onclick="addBlankCourse()">Start blank instead</button>
       <button class="ghost" onclick="cancelFind()">Dismiss</button></div>`:''}`;
 }
+function courseRowHTML(x,forPick){
+  const {c,i,mi}=x;
+  const par=c.holes.reduce((a,h)=>a+h.par,0);
+  const active=c.id===S.course.id;
+  const miTag=mi!=null?`<span class="tiny" style="flex:none;color:var(--ink3);margin-left:8px">${mi<10?mi.toFixed(1):Math.round(mi)} mi</span>`:'';
+  if(forPick)return `<div class="row" onclick="pickCourse(${i})" style="cursor:pointer;${active?'background:var(--green-lt);border-radius:10px;padding:9px 12px;border-top:none;margin:2px 0':''}">
+    <div style="flex:1;min-width:0"><b${active?' style="color:var(--green)"':''}>${active?'✓ ':''}${esc(c.name)}</b><div class="tiny">Par ${par}</div></div>${miTag}
+  </div>`;
+  return `<div class="row" style="${active?'background:var(--green-lt);border-radius:10px;padding:9px 12px;border-top:none;margin:2px 0':''}">
+    <div onclick="pickCourse(${i})" style="flex:1;min-width:0;cursor:pointer"><b${active?' style="color:var(--green)"':''}>${esc(c.name)}</b><div class="tiny">Par ${par} · ${c.teeSets.map(t=>esc(t.name)).join(' / ')}</div></div>${miTag}
+    ${active?`<button class="ghost sel" onclick="go('course')" style="flex:none">Edit</button>`
+      :S.courses.length>1?`<button class="ghost danger" onclick="delCourse(${i})" style="flex:none">${armDelCourse===i?'Delete?':'✕'}</button>`:''}
+  </div>`;
+}
+function courseListHTML(forPick){
+  if(!window.__coordsAsk||Date.now()-window.__coordsAsk>60000){window.__coordsAsk=Date.now();grabCoords();}
+  const {near,rest}=courseDisplayOrder();
+  return `${near.length?`<div class="tiny" style="margin:4px 0 2px;font-weight:700">📍 Nearest</div>`:''}
+    ${near.map(x=>courseRowHTML(x,forPick)).join('')}
+    ${rest.length?`<div style="display:flex;align-items:center;gap:10px;margin:18px 0 8px">
+      <div style="flex:1;height:2px;background:var(--line);border-radius:1px"></div>
+      <span class="tiny" style="font-weight:700;letter-spacing:.08em;color:var(--ink2)">ALL COURSES A–Z</span>
+      <div style="flex:1;height:2px;background:var(--line);border-radius:1px"></div>
+    </div>
+    <div style="max-height:295px;overflow-y:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:12px;padding:0 10px">${rest.map(x=>courseRowHTML(x,forPick)).join('')}</div>`:''}`;
+}
 function vCourses(){
   return topbar('Courses','','home')+`<main>
   <div class="card"><h2>Course</h2>
-    ${S.courses.map((c,i)=>{
-      const par=c.holes.reduce((a,h)=>a+h.par,0);
-      const active=c.id===S.course.id;
-      return `<div class="row" style="${active?'background:var(--green-lt);border-radius:10px;padding:9px 12px;border-top:none;margin:2px 0':''}">
-        <div onclick="pickCourse(${i})" style="flex:1;cursor:pointer"><b${active?' style="color:var(--green)"':''}>${esc(c.name)}</b><div class="tiny">Par ${par} · ${c.teeSets.map(t=>esc(t.name)).join(' / ')}</div></div>
-        ${active?`<button class="ghost sel" onclick="go('course')">Edit</button>`
-          :S.courses.length>1?`<button class="ghost danger" onclick="delCourse(${i})">${armDelCourse===i?'Delete?':'✕'}</button>`:''}
-      </div>`;}).join('')}
+    ${courseListHTML(false)}
     ${courseFinderHTML()}
     ${S.round.started?`<div class="tiny mt">Switching courses re-scores the round in progress against the new card.</div>`:''}
     ${backupBlockHTML()}
