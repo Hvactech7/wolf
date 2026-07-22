@@ -258,7 +258,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784695268';
+const BUILD='1784696490';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -2699,7 +2699,7 @@ function gateAddGroup(){
     ensureMeFirst();
     chosen.forEach((n,k)=>{
       const pl=S.players[k+1];
-      pl.name=n.name;pl.index=+n.index||10;pl.chOverride=null;pl.nearby=true;delete pl.libId;delete pl.scorer;
+      pl.name=uniqueRosterName(n.name,k+1);pl.index=+n.index||10;pl.chOverride=null;pl.nearby=true;delete pl.libId;delete pl.scorer;
       if(n.pid)pl.pid=n.pid;else delete pl.pid;
       const t=S.course.teeSets.find(ts=>ts.name.toLowerCase()===String(n.tee||'').toLowerCase());
       if(t)pl.tee=t.id;
@@ -3779,7 +3779,8 @@ function upsertLib(p){
   if(!e&&p.pid){e=S.playerLib.find(x=>x.pid===p.pid);if(e)p.libId=e.id;}
   if(!e){e=S.playerLib.find(x=>x.name.trim().toLowerCase()===nm.toLowerCase());if(e)p.libId=e.id;}
   if(!e){e={id:'pl'+Date.now()+Math.floor(Math.random()*1e4)};S.playerLib.push(e);p.libId=e.id;}
-  e.name=nm;e.index=p.index;e.teeName=teeOf(p).name;
+  if(!(/\s\d+$/.test(nm)&&nm.replace(/\s\d+$/,'')===e.name))e.name=nm;
+  e.index=p.index;e.teeName=teeOf(p).name;
   if(p.pid)e.pid=p.pid;
 }
 function loadPlayer(i,libId){
@@ -3787,7 +3788,7 @@ function loadPlayer(i,libId){
   set(()=>{
     const e=S.playerLib.find(x=>x.id===libId);if(!e)return;
     const p=S.players[i];
-    p.name=e.name;p.index=e.index;p.libId=e.id;p.chOverride=null;
+    p.name=uniqueRosterName(e.name,i);p.index=e.index;p.libId=e.id;p.chOverride=null;
     delete p.nearby;
     if(e.pid)p.pid=e.pid;else delete p.pid;
     if(!S.me.name||e.name.trim().toLowerCase()!==S.me.name.trim().toLowerCase())p.scorer=devId();
@@ -3800,7 +3801,20 @@ function delPlayer(libId){set(()=>{
   S.playerLib=S.playerLib.filter(x=>x.id!==libId);
   S.players.forEach(p=>{if(p.libId===libId)delete p.libId;});
 });}
+// Two Tylers in one round break name-keyed fallbacks (claims, stats, teams)
+// and confuse the scorecard — auto-disambiguate to 'Tyler 2' on every path.
+// Display-only: pids are untouched, and upsertLib won't rename a library
+// entry over a plain numeric suffix.
+function uniqueRosterName(nm,exceptIdx){
+  nm=(nm||'').trim();
+  if(!nm||/^Player \d$/.test(nm))return nm;
+  const taken=c=>S.players.some((p,j)=>j!==exceptIdx&&p&&(p.name||'').trim().toLowerCase()===c.toLowerCase());
+  if(!taken(nm))return nm;
+  for(let k=2;k<10;k++){const c=nm+' '+k;if(!taken(c))return c;}
+  return nm;
+}
 function setPl(i,k,v){set(()=>{
+  if(k==='name')v=uniqueRosterName(v,i);
   if(k==='index')S.players[i][k]=+v||0;
   else if(k==='chOverride')S.players[i][k]=v===''?null:+v;
   else S.players[i][k]=v;
@@ -3968,7 +3982,7 @@ function gateAddOne(id){
     ensureMeFirst();
     const j=firstEmptySlot();if(j<0)return;
     const pl=S.players[j];
-    pl.name=n.name;pl.index=+n.index||10;pl.chOverride=null;pl.nearby=true;delete pl.libId;delete pl.scorer;delete pl.ownerDev;
+    pl.name=uniqueRosterName(n.name,j);pl.index=+n.index||10;pl.chOverride=null;pl.nearby=true;delete pl.libId;delete pl.scorer;delete pl.ownerDev;
     if(n.pid)pl.pid=n.pid;else delete pl.pid;
     const t=S.course.teeSets.find(ts=>ts.name.toLowerCase()===String(n.tee||'').toLowerCase());
     if(t)pl.tee=t.id;
