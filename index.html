@@ -258,7 +258,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784693216';
+const BUILD='1784695268';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -442,6 +442,8 @@ function load(){
       if(!s.config.scramble)s.config.scramble={teams:'2v2'};
       if(!s.history)s.history=[];
       if(!s.groupLib)s.groupLib=[];
+      if(!s.teamLib)s.teamLib=[];
+      if(s.me&&s.me.name&&!s.me.pid)s.me.pid='u'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
       if(!s.config.bestball)s.config.bestball={pairing:0};
       if(!s.config.umbrella)s.config.umbrella={pairing:0};
       if(s.config.scramble&&s.config.scramble.pairing==null)s.config.scramble.pairing=0;
@@ -516,7 +518,7 @@ function load(){
       return s;
     }}
   }catch(e){}
-  return {screen:'home',course:defaultCourse(),courses:builtinCourses(),playerLib:[],groupLib:[],config:defaultConfig(),players:defaultPlayers(),round:blankRound(),share:{on:false,code:null},me:{name:'',index:10},theme:'dark',history:[],autoBackup:true};
+  return {screen:'home',course:defaultCourse(),courses:builtinCourses(),playerLib:[],groupLib:[],teamLib:[],config:defaultConfig(),players:defaultPlayers(),round:blankRound(),share:{on:false,code:null},me:{name:'',index:10},theme:'dark',history:[],autoBackup:true};
 }
 function syncLib(){
   if(!S.courses)return;
@@ -534,14 +536,14 @@ let abFp=localStorage.getItem('btAbFp')||'';
 function abStamp(fp){abFp=fp;try{localStorage.setItem('btAbFp',fp);localStorage.setItem('btAbAt',String(Date.now()));}catch(e){}}
 function abPayload(){
   const courses=S.courses.map(c=>{const {geo,...rest}=c;return rest;});
-  return {me:S.me,playerLib:S.playerLib,courses,history:S.history||[],groups:S.groupLib||[]};
+  return {me:S.me,playerLib:S.playerLib,courses,history:S.history||[],groups:S.groupLib||[],teams:S.teamLib||[]};
 }
 function autoBackupCheck(){
   if(!S.autoBackup)return;
   const em=(localStorage.getItem('wolfBackupEmail')||'').trim();
   if(!em||!S.playerLib.length)return;   // never auto-save an empty library over a good backup
   const data=abPayload();
-  const fp=JSON.stringify([data.me,data.playerLib,data.courses,data.history.map(h=>h.id)]);
+  const fp=JSON.stringify([data.me,data.playerLib,data.courses,data.history.map(h=>h.id),data.groups,data.teams]);
   if(fp===abFp)return;
   clearTimeout(abTimer);
   abTimer=setTimeout(async()=>{
@@ -701,7 +703,9 @@ function claimMySlot(steal){
   const me=S.me.name.trim().toLowerCase();
   let changed=false;
   S.players.forEach(p=>{
-    const match=(p.name||'').trim().toLowerCase()===me;
+    const pidMatch=!!(S.me.pid&&p.pid===S.me.pid);
+    const match=pidMatch||(p.name||'').trim().toLowerCase()===me;
+    if(match&&!p.pid&&S.me.pid){p.pid=S.me.pid;changed=true;}
     // steal-by-name only on join (state doc / round creation) so a replaced
     // phone can take its row over; later meta heals fill only EMPTY slots —
     // otherwise two phones sharing a name would fight over the row forever
@@ -799,7 +803,7 @@ function kmBetween(a,b,c,d){const R=6371,dl=(c-a)*Math.PI/180,dn=(d-b)*Math.PI/1
 function sendHello(){
   if(!lobbySock||lobbySock.readyState!==1||!S.me||!S.me.name)return;
   try{lobbySock.send(JSON.stringify({t:'hello',info:{id:devId(),name:S.me.name,index:S.me.index,
-    tee:S.me.teeName||'',lat:myCoords?myCoords[0]:null,lon:myCoords?myCoords[1]:null}}));}catch(e){}
+    tee:S.me.teeName||'',pid:S.me.pid||null,lat:myCoords?myCoords[0]:null,lon:myCoords?myCoords[1]:null}}));}catch(e){}
 }
 function grabCoords(){
   if(!navigator.geolocation)return;
@@ -824,7 +828,7 @@ function saveMe(){
   }
   if(em)try{localStorage.setItem('wolfBackupEmail',em);}catch(x2){}
   set(()=>{
-    S.me={name,index:+((x&&x.value)||10)||10};
+    S.me={name,index:+((x&&x.value)||10)||10,pid:(S.me&&S.me.pid)||('u'+Date.now().toString(36)+Math.random().toString(36).slice(2,8))};
     upsertLib({name,index:S.me.index,tee:S.players[0]?S.players[0].tee:undefined,libId:null});
   });
   stat('profile',{name,email:em||localStorage.getItem('wolfBackupEmail')||''});
@@ -903,7 +907,7 @@ async function doBackup(){
     // course geo (satellite hole maps) re-downloads on-site — strip it so the
     // backup stays small enough for the relay even with round history aboard
     const courses=S.courses.map(c=>{const {geo,...rest}=c;return rest;});
-    const r=await relayBackup({op:'save',email:em,data:{me:S.me,playerLib:S.playerLib,courses,history:S.history||[],groups:S.groupLib||[]}});
+    const r=await relayBackup({op:'save',email:em,data:{me:S.me,playerLib:S.playerLib,courses,history:S.history||[],groups:S.groupLib||[],teams:S.teamLib||[]}});
     if(r&&r.ok){const d=abPayload();abStamp(JSON.stringify([d.me,d.playerLib,d.courses,d.history.map(h=>h.id)]));}
     const nh=(S.history||[]).length;
     backupUI.msg=r.ok?`✓ ${S.playerLib.length} player${S.playerLib.length===1?'':'s'} + ${S.courses.length} course${S.courses.length===1?'':'s'}${nh?` + ${nh} round${nh===1?'':'s'}`:''} safely backed up${r.emailed?' — confirmation emailed':''}.`:(r.error||'Backup failed.');
@@ -956,6 +960,11 @@ async function doRestore(){
           if(!g2||!g2.name)return;
           if(!(S.groupLib=S.groupLib||[]).some(x=>x.name.trim().toLowerCase()===g2.name.trim().toLowerCase()))S.groupLib.push(g2);
         });
+        (r.data.teams||[]).forEach(t2=>{
+          if(!t2||!t2.key||!t2.name)return;
+          if(!(S.teamLib=S.teamLib||[]).some(x=>x.key===t2.key))S.teamLib.push(t2);
+        });
+        if(r.data.me&&r.data.me.pid&&!(S.me&&S.me.pid))S.me.pid=r.data.me.pid;
       });
       backupUI.stage=0;
       backupUI.msg=`✓ Restored — ${added} player${added===1?'':'s'} added, ${updated} updated${backupUI._cAdded?`, ${backupUI._cAdded} course${backupUI._cAdded===1?'':'s'} added`:''}${backupUI._hAdded?`, ${backupUI._hAdded} round${backupUI._hAdded===1?'':'s'} recovered`:''}.`;
@@ -1169,7 +1178,7 @@ function runningTotalsCard(){
   let tiles='',foot='';
   if(g==='scramble'||g==='stroke'){
     const eng=g==='scramble'?computeScramble():computeStroke();
-    const units=g==='scramble'?scrambleTeams().map(t=>({id:t[0],label:t.map(first).join(' & ')}))
+    const units=g==='scramble'?scrambleTeams().map(t=>({id:t[0],label:teamLbl(t)}))
                               :actIdx().map(i=>({id:i,label:first(i)}));
     const rows=units.map(u=>({label:u.label,v:eng.ledgers[L][u.id],d:eng.ledgers[L][u.id]-eng.par[L][u.id]}));
     rows.sort((a,b)=>a.d-b.d);
@@ -1187,14 +1196,14 @@ function runningTotalsCard(){
     foot='points';
   }else if(g==='bestball'){
     const bb=computeBestBall(),m=computeMatch(L),T=m.T;
-    const rows=T.map(t=>({label:t.map(first).join(' & '),v:bb.ledgers[L][t[0]]}));
+    const rows=T.map(t=>({label:teamLbl(t),v:bb.ledgers[L][t[0]]}));
     rows.sort((a,b)=>b.v-a.v);
     const lead=rows[0].v;
     const tiedB=rows[0].v===rows[1].v;
     tiles=rows.map((r,ri)=>tile(r.label,String(r.v),tiedB?'all square':(ri===0?'leader':`${r.v-lead} back`),tiedB?3:(ri===0?0:2),'var(--ink)')).join('');
-    foot=m.clinch?`${m.clinch.team===0?T[0].map(first).join(' & '):T[1].map(first).join(' & ')} win ${m.clinch.margin}${m.clinch.left?'&'+m.clinch.left:' UP'}`
+    foot=m.clinch?`${teamLbl(m.clinch.team===0?T[0]:T[1])} win ${m.clinch.margin}${m.clinch.left?'&'+m.clinch.left:' UP'}`
       :m.up===0?'All square'
-      :`${(m.up>0?T[0]:T[1]).map(first).join(' & ')} ${Math.abs(m.up)} UP${Math.abs(m.up)===m.count-m.thru?' — dormie':''}`;
+      :`${teamLbl(m.up>0?T[0]:T[1])} ${Math.abs(m.up)} UP${Math.abs(m.up)===m.count-m.thru?' — dormie':''}`;
   }else{
     const eng=g==='nines'?computeNines():g==='vegas'?computeVegas():g==='stableford'?computeStableford()
       :g==='sixes'?computeSixes():g==='umbrella'?computeUmbrella():g==='bbb'?computeBBB():g==='nassau'?computeNassau():g==='skins'?computeSkins():computeAll();
@@ -1206,7 +1215,7 @@ function runningTotalsCard(){
     const tiedAll=rows.every(r=>r.v===lead);
     tiles=rows.map((r,ri)=>tile(r.label,f(r.v),tiedAll?'all square':(ri===0?(rows.length>1&&rows[1].v===lead?'tied lead':'leader'):`${back(r.v)} back`),tiedAll?3:ri,sgnCol(r.v))).join('');
     if(g==='sixes'){const T=sixesTeamsFor(S.round.cur);
-      foot=`${T[0].map(first).join(' & ')} v ${T[1].map(first).join(' & ')}`;}
+      foot=`${teamLbl(T[0])} v ${teamLbl(T[1])}`;}
     else if(g==='nassau'){const sgn=x=>x===0?'AS':(x>0?'+':'')+x;
       foot=eng.bets[L].filter(b=>!b.press).map(b=>`${b.seg[0].toUpperCase()} ${sgn(b.up)}`).join(' · ');}
     else if(g==='skins'){foot=eng.pot[L]>0?fmtMoney(eng.pot[L])+' riding':'dollars won';}
@@ -1789,6 +1798,7 @@ function mapConfirm(){
 }
 function myPlayerIdx(){
   let i=S.players.findIndex(p=>p&&p.ownerDev===devId());
+  if(i<0&&S.me&&S.me.pid)i=S.players.findIndex(p=>p&&p.pid===S.me.pid);
   if(i<0&&S.me&&S.me.name)i=S.players.findIndex(p=>p&&(p.name||'').trim().toLowerCase()===S.me.name.trim().toLowerCase());
   return i<0?0:i;
 }
@@ -2344,9 +2354,9 @@ function holeSplash(){
   }else if(g==='vegas'){
     const r=computeVegas().perHole[h],res=r&&r.results[L];
     if(res){const T=r.teams;
-      headline=res.winner==null?'PUSH — numbers match':`${T[res.winner].map(first).join(' & ')} +${res.diff}`;
-      rows.push([T[0].map(first).join(' & '),String(res.nums[0])+(res.flips[0]?' 🔄':'')]);
-      rows.push([T[1].map(first).join(' & '),String(res.nums[1])+(res.flips[1]?' 🔄':'')]);}
+      headline=res.winner==null?'PUSH — numbers match':`${teamLbl(T[res.winner])} +${res.diff}`;
+      rows.push([teamLbl(T[0]),String(res.nums[0])+(res.flips[0]?' 🔄':'')]);
+      rows.push([teamLbl(T[1]),String(res.nums[1])+(res.flips[1]?' 🔄':'')]);}
   }else if(g==='wolf'){
     const r=computeAll().perHole[h],res=r&&r.results[L];
     if(res){
@@ -2365,8 +2375,8 @@ function holeSplash(){
     else{const best=t=>Math.min(...t.map(i=>sc(i)??99));const a=best(T[0]),b=best(T[1]);
       if(a<b)win=0;else if(b<a)win=1;
       else if(g==='sixes'){const s2=t=>t.reduce((x,i)=>x+(sc(i)??99),0);const sA=s2(T[0]),sB=s2(T[1]);win=sA<sB?0:sB<sA?1:null;}}
-    headline=win==null?'HALVED':`${T[win].map(first).join(' & ')} take the hole${mult>1?` ×${mult} 🔨`:''}${st&&st.fold>=0?' — FOLD':''}`;
-    T.forEach(t=>{const b=Math.min(...t.map(i=>sc(i)??99));rows.push([t.map(first).join(' & '),b===99?'–':String(b)+tag(b)]);});
+    headline=win==null?'HALVED':`${teamLbl(T[win])} take the hole${mult>1?` ×${mult} 🔨`:''}${st&&st.fold>=0?' — FOLD':''}`;
+    T.forEach(t=>{const b=Math.min(...t.map(i=>sc(i)??99));rows.push([teamLbl(t),b===99?'–':String(b)+tag(b)]);});
   }else if(g==='umbrella'){
     const T=matchTeams('umbrella');const pts=[0,0];
     const bA=Math.min(...T[0].map(i=>sc(i)??99)),bB=Math.min(...T[1].map(i=>sc(i)??99));
@@ -2378,7 +2388,7 @@ function holeSplash(){
     if(bird[0]&&!bird[1])pts[0]+=1;else if(bird[1]&&!bird[0])pts[1]+=1;
     const sweep=pts[0]===6||pts[1]===6;
     headline=sweep?'☂ UMBRELLA — 6 DOUBLES TO 12!':`${pts[0]} — ${pts[1]}`;
-    T.forEach((t,k)=>rows.push([t.map(first).join(' & '),String(pts[k]===6?12:pts[k])+' pts']));
+    T.forEach((t,k)=>rows.push([teamLbl(t),String(pts[k]===6?12:pts[k])+' pts']));
   }else if(g==='skins'){
     const eng=computeSkins();const d=eng.detail[L].find(x=>x.h===h);
     headline=d?(d.won!=null?`💰 ${first(d.won)} takes ${fmtMoney(d.amt)}`:(d.dead?'TIE — skin dies':`TIE — ${fmtMoney(eng.pot[L])} rides on`)):'';
@@ -2386,7 +2396,7 @@ function holeSplash(){
   }else if(g==='nassau'){
     const T=nassauSides();
     const best=t=>Math.min(...t.map(i=>sc(i)??99));const a=best(T[0]),b=best(T[1]);
-    headline=a===b?'HALVED':`${T[a<b?0:1].map(first).join(' & ')} win the hole`;
+    headline=a===b?'HALVED':`${teamLbl(T[a<b?0:1])} win the hole`;
     const na=computeNassau();const sgn=x=>x===0?'AS':(x>0?'+':'')+x;
     na.bets[L].filter(bb=>!bb.press).forEach(bb=>rows.push([bb.seg[0].toUpperCase()+bb.seg.slice(1),sgn(bb.up)]));
   }else if(g==='bbb'){
@@ -2406,7 +2416,7 @@ function holeSplash(){
   }else if(g==='scramble'){
     const T=scrambleTeams(),capt=T.map(t=>t[0]);
     headline=T.length>1?'Team scores':'Team score';
-    T.forEach((t,k)=>{const gr=rec.gross[capt[k]];rows.push([t.map(first).join(' & '),String(gr??'–')+tag(gr)]);});
+    T.forEach((t,k)=>{const gr=rec.gross[capt[k]];rows.push([teamLbl(t),String(gr??'–')+tag(gr)]);});
   }else{
     const vals=actIdx().map(i=>({i,v:sc(i)}));
     const best=Math.min(...vals.map(x=>x.v??99));
@@ -2626,12 +2636,13 @@ function pickGame(g){set(()=>{S.config.game=g;S.config.games=[g];S.screen='gate'
 function ensureMeFirst(){
   if(!S.me||!S.me.name)return;
   const me=S.me.name.trim().toLowerCase();
-  const idx=S.players.findIndex(pl=>(pl.name||'').trim().toLowerCase()===me);
-  if(idx===0)return;
-  if(idx>0){const [pl]=S.players.splice(idx,1);S.players.unshift(pl);}
+  const idx=S.players.findIndex(pl=>(pl.pid&&pl.pid===S.me.pid)||(pl.name||'').trim().toLowerCase()===me);
+  if(idx===0){if(S.me.pid)S.players[0].pid=S.me.pid;return;}
+  if(idx>0){const [pl]=S.players.splice(idx,1);S.players.unshift(pl);if(S.me.pid)S.players[0].pid=S.me.pid;}
   else{
     const lib=S.playerLib.find(e=>e.name.trim().toLowerCase()===me);
     const pl={name:S.me.name,index:S.me.index,chOverride:null};
+    if(S.me.pid)pl.pid=S.me.pid;
     if(lib){pl.index=lib.index;pl.libId=lib.id;if(lib.tee&&S.course.teeSets.some(t=>t.id===lib.tee))pl.tee=lib.tee;}
     if(!pl.tee)pl.tee=(S.players[0]&&S.players[0].tee)||(S.course.teeSets[0]&&S.course.teeSets[0].id);
     S.players.unshift(pl);
@@ -2689,6 +2700,7 @@ function gateAddGroup(){
     chosen.forEach((n,k)=>{
       const pl=S.players[k+1];
       pl.name=n.name;pl.index=+n.index||10;pl.chOverride=null;pl.nearby=true;delete pl.libId;delete pl.scorer;
+      if(n.pid)pl.pid=n.pid;else delete pl.pid;
       const t=S.course.teeSets.find(ts=>ts.name.toLowerCase()===String(n.tee||'').toLowerCase());
       if(t)pl.tee=t.id;
       upsertLib(pl);
@@ -2838,7 +2850,8 @@ function vStats(){
   const rounds=[];
   (S.history||[]).forEach(e=>{
     const snap=e.playersSnap||[];
-    const mi=snap.findIndex(pl=>(pl.name||'').trim().toLowerCase()===meNm);
+    let mi=S.me&&S.me.pid?snap.findIndex(pl=>pl.pid===S.me.pid):-1;
+    if(mi<0)mi=snap.findIndex(pl=>(pl.name||'').trim().toLowerCase()===meNm);
     if(mi<0)return;
     const course=S.courses.find(c=>c.id===e.courseId);
     const parOf=h=>{const cs=course||S.course;return ((cs.holes||[])[h]||{par:4}).par;};
@@ -3621,7 +3634,7 @@ function vSetup(){
   ${(()=>{const pairBtns=g2=>[[[0,1],[2,3]],[[0,2],[1,3]],[[0,3],[1,2]]].map((T,pi)=>`
       <button class="ghost ${teamPairing(g2)===pi?'sel':''}" style="width:100%;text-align:left;margin-bottom:8px" onclick="setTeamPairing('${g2}',${pi})">${pairLbl(T)}</button>`).join('');
     let out='';
-    if(bestball)out+=`<div class="card"><h2>🏆 Best Ball teams</h2>${pairBtns('bestball')}
+    if(bestball)out+=`<div class="card"><h2>🏆 Best Ball teams</h2>${pairBtns('bestball')}${teamNamesHTML('bestball')}
       <div class="tiny mt">Better ball of each team wins the hole.</div></div>`;
     if(scramble)out+=`<div class="card"><h2>🤝 Scramble teams</h2>
       <div class="row" style="border-top:none"><span class="muted">Format</span>
@@ -3629,16 +3642,17 @@ function vSetup(){
         <button class="ghost ${S.config.scramble.teams!=='solo'?'sel':''}" onclick="set(()=>S.config.scramble.teams='2v2')">2 v 2</button>
         <button class="ghost ${S.config.scramble.teams==='solo'?'sel':''}" onclick="set(()=>S.config.scramble.teams='solo')">One team — all 4</button>
       </span></div>
-      ${S.config.scramble.teams==='solo'?'':pairBtns('scramble')}
+      ${S.config.scramble.teams==='solo'?'':pairBtns('scramble')+teamNamesHTML('scramble')}
       <div class="tiny mt">${S.config.scramble.teams==='solo'?'Tournament mode — the whole group plays one ball and the app keeps the card. Net uses the 25/20/15/10% four-player allowance.':'One ball per team — pick your partners. Net strokes use the 35%/15% scramble allowance.'}</div></div>`;
-    if(umbrella)out+=`<div class="card"><h2>☂ Umbrella teams</h2>${pairBtns('umbrella')}
+    if(umbrella)out+=`<div class="card"><h2>☂ Umbrella teams</h2>${pairBtns('umbrella')}${teamNamesHTML('umbrella')}
       <div class="tiny mt">Six points a hole — low ball 2, low team total 2, closest to pin 1, gross birdie 1. Sweep all six for 12.</div></div>`;
-    if(nassau&&S.config.nassau.n!==2)out+=`<div class="card"><h2>🏅 Nassau teams</h2>${pairBtns('nassau')}
+    if(nassau&&S.config.nassau.n!==2)out+=`<div class="card"><h2>🏅 Nassau teams</h2>${pairBtns('nassau')}${teamNamesHTML('nassau')}
       <div class="tiny mt">Best ball of each team decides every hole across all three bets.</div></div>`;
     return out;})()}
   ${vegas?`<div class="card"><h2>🎲 Vegas teams</h2>
     ${[[[0,1],[2,3]],[[0,2],[1,3]],[[0,3],[1,2]]].map((T,pi)=>`
       <button class="ghost ${teamPairing('vegas')===pi?'sel':''}" style="width:100%;text-align:left;margin-bottom:8px" onclick="setTeamPairing('vegas',${pi})">${pairLbl(T)}</button>`).join('')}
+    ${teamNamesHTML('vegas')}
     <div class="row"><span class="muted">Swap partners every 6 holes</span>
       <button class="ghost ${V.rotate==='six'?'sel':''}" onclick="set(()=>S.config.vegas.rotate=S.config.vegas.rotate==='six'?'none':'six')">${V.rotate==='six'?'On':'Off'}</button></div>
     <div class="row"><span class="muted">Birdie flips opponent’s number</span>
@@ -3762,9 +3776,11 @@ function upsertLib(p){
   const nm=(p.name||'').trim();
   if(!nm||/^Player \d$/.test(nm))return;
   let e=p.libId?S.playerLib.find(x=>x.id===p.libId):null;
+  if(!e&&p.pid){e=S.playerLib.find(x=>x.pid===p.pid);if(e)p.libId=e.id;}
   if(!e){e=S.playerLib.find(x=>x.name.trim().toLowerCase()===nm.toLowerCase());if(e)p.libId=e.id;}
   if(!e){e={id:'pl'+Date.now()+Math.floor(Math.random()*1e4)};S.playerLib.push(e);p.libId=e.id;}
   e.name=nm;e.index=p.index;e.teeName=teeOf(p).name;
+  if(p.pid)e.pid=p.pid;
 }
 function loadPlayer(i,libId){
   if(!libId)return;
@@ -3773,6 +3789,7 @@ function loadPlayer(i,libId){
     const p=S.players[i];
     p.name=e.name;p.index=e.index;p.libId=e.id;p.chOverride=null;
     delete p.nearby;
+    if(e.pid)p.pid=e.pid;else delete p.pid;
     if(!S.me.name||e.name.trim().toLowerCase()!==S.me.name.trim().toLowerCase())p.scorer=devId();
     else delete p.scorer;
     const t=S.course.teeSets.find(ts=>ts.name.toLowerCase()===String(e.teeName||'').toLowerCase());
@@ -3952,6 +3969,7 @@ function gateAddOne(id){
     const j=firstEmptySlot();if(j<0)return;
     const pl=S.players[j];
     pl.name=n.name;pl.index=+n.index||10;pl.chOverride=null;pl.nearby=true;delete pl.libId;delete pl.scorer;delete pl.ownerDev;
+    if(n.pid)pl.pid=n.pid;else delete pl.pid;
     const t=S.course.teeSets.find(ts=>ts.name.toLowerCase()===String(n.tee||'').toLowerCase());
     if(t)pl.tee=t.id;
     upsertLib(Object.assign({},pl));
@@ -4212,7 +4230,7 @@ function nassauCardHTML(){
   const eng=computeNassau(),L=primaryLens(),T=nassauSides();
   const o=playOrder(),pos=Math.max(0,posOf(h));
   const first=i=>esc((S.players[i].name||'').split(' ')[0]);
-  const tn=k=>T[k].map(first).join(' & ');
+  const tn=k=>teamLbl(T[k]);
   const segLen=x=>x==='overall'?o.length:9;
   const rows=eng.bets[L].map(b=>{
     const fin=b.thru>=segLen(b.seg)-b.from;
@@ -4241,7 +4259,7 @@ function hammerCardHTML(){
   const h=S.round.cur,rec=S.round.holes[h];
   const st=hamState(rec),T=hamTeams(h);
   const fn=i=>esc((S.players[i].name||'').split(' ')[0]);
-  const tn=k=>T[k].map(fn).join(' & ');
+  const tn=k=>teamLbl(T[k]);
   const dis=rec.confirmed||isReview();
   let inner;
   if(st.fold>=0){
@@ -4425,7 +4443,7 @@ function vHoleVegas(){
     const n=res?res.nums[k]:liveNum(t);
     const flipped=res&&res.flips[k];
     return `<div class="teambox ${flipped?'flipped':''}">
-      <div class="row" style="border-top:none"><b>${esc(S.players[t[0]].name)} &amp; ${esc(S.players[t[1]].name)}</b>
+      <div class="row" style="border-top:none"><b>${teamLbl(t)}</b>
         <span class="vnum num">${n==null?'··':n}${flipped?' 🔄':''}</span></div>
       ${t.map(scoreRow).join('')}
     </div>`;
@@ -4487,7 +4505,7 @@ function vHoleScramble(){
   const rows=T.map((t,k)=>{
     const g=rec.gross[capt[k]], d=scrambleDots(k,h);
     return `<div class="scorebar">
-      <div style="min-width:140px"><b>${t.map(i=>esc(S.players[i].name)).join(' &amp; ')}</b>
+      <div style="min-width:140px"><b>${teamLbl(t)}</b>
         <div class="tiny">${d>0?`<span class="dots">${'●'.repeat(d)}</span>`:''} ${g!=null&&S.config.lens!=='gross'?`net ${g-d}`:''}</div></div>
       <div class="stepper">
         <button onclick="chScore(${capt[k]},-1)">−</button>
@@ -4519,7 +4537,7 @@ function scSegTable(idx,segLabel,extraTot){
   const parSeg=idx.reduce((a,i)=>a+hs[i].par,0);
   let out='<div class="sc-wrap"><table class="sc" style="width:100%"><tr><th class="nm">Hole</th>'+idx.map(i=>`<th>${i+1}</th>`).join('')+`<th>${segLabel}</th>`+(extraTot?'<th>TOT</th>':'')+'</tr>';
   out+='<tr class="parrow"><td class="nm">Par</td>'+idx.map(i=>`<td>${hs[i].par}</td>`).join('')+`<td>${parSeg}</td>`+(extraTot?`<td>${hs.reduce((a,h)=>a+h.par,0)}</td>`:'')+'</tr>';
-  const rowDefs=gameOn()==='scramble'?scrambleTeams().map(t=>({name:t.map(i=>S.players[i].name).join(' & '),pi:t[0]})):S.players.slice(0,NP()).map((p,pi)=>({name:p.name,pi}));
+  const rowDefs=gameOn()==='scramble'?scrambleTeams().map(t=>({name:teamNameFor(t)||t.map(i=>S.players[i].name).join(' & '),pi:t[0]})):S.players.slice(0,NP()).map((p,pi)=>({name:p.name,pi}));
   rowDefs.forEach(({name:rowName,pi})=>{
     const g=i=>S.round.holes[i].confirmed?S.round.holes[i].gross[pi]:null;
     const played=idx.filter(i=>g(i)!=null);
@@ -4569,7 +4587,7 @@ function scorecardHTML(){
     +idx.slice(9).map(i=>`<th>${i+1}</th>`).join('')+'<th>IN</th><th>TOT</th></tr>';
   html+='<tr class="parrow"><td class="nm">Par</td>'+hs.slice(0,9).map(h=>`<td>${h.par}</td>`).join('')
     +`<td>${parOut}</td>`+hs.slice(9).map(h=>`<td>${h.par}</td>`).join('')+`<td>${parIn}</td><td>${parOut+parIn}</td></tr>`;
-  const rowDefs=gameOn()==='scramble'?scrambleTeams().map(t=>({name:t.map(i=>S.players[i].name).join(' & '),pi:t[0]})):S.players.slice(0,NP()).map((p,pi)=>({name:p.name,pi}));
+  const rowDefs=gameOn()==='scramble'?scrambleTeams().map(t=>({name:teamNameFor(t)||t.map(i=>S.players[i].name).join(' & '),pi:t[0]})):S.players.slice(0,NP()).map((p,pi)=>({name:p.name,pi}));
   rowDefs.forEach(({name:rowName,pi})=>{
     const g=i=>S.round.holes[i].confirmed?S.round.holes[i].gross[pi]:null;
     const sum=(a,b)=>{let s=0,n=0;for(let i=a;i<b;i++){const v=g(i);if(v!=null){s+=v;n++;}}return n?s:null;};
@@ -4597,7 +4615,7 @@ function scorecard9HTML(base){
   let html='<div class="sc-wrap"><table class="sc"><tr><th class="nm">Hole</th>'
     +idx.map(i=>`<th>${i+1}</th>`).join('')+'<th>TOT</th></tr>';
   html+='<tr class="parrow"><td class="nm">Par</td>'+idx.map(i=>`<td>${hs[i].par}</td>`).join('')+`<td>${parTot}</td></tr>`;
-  const rowDefs=gameOn()==='scramble'?scrambleTeams().map(t=>({name:t.map(i=>S.players[i].name).join(' & '),pi:t[0]})):S.players.slice(0,NP()).map((p,pi)=>({name:p.name,pi}));
+  const rowDefs=gameOn()==='scramble'?scrambleTeams().map(t=>({name:teamNameFor(t)||t.map(i=>S.players[i].name).join(' & '),pi:t[0]})):S.players.slice(0,NP()).map((p,pi)=>({name:p.name,pi}));
   rowDefs.forEach(({name:rowName,pi})=>{
     const g=i=>S.round.holes[i].confirmed?S.round.holes[i].gross[pi]:null;
     const played=idx.filter(i=>g(i)!=null);
@@ -4669,6 +4687,31 @@ function teamPairing(g){
   return (S.config.vegas&&S.config.vegas.pairing)||0;
 }
 function setTeamPairing(g,pi){set(()=>{teamCfg(g).pairing=pi;});}
+// Saved 2-man team names: keyed by the duo (name-pair, order-blind) so a name
+// sticks to the same two golfers across rounds, rosters and pairings
+function teamKey(t){return t.map(i=>{const p=S.players[i]||{};return p.pid?('u:'+p.pid):('n:'+((p.name||'').trim().toLowerCase()));}).sort().join('|');}
+function teamKeyLegacy(t){return t.map(i=>((S.players[i]&&S.players[i].name)||'').trim().toLowerCase()).sort().join('|');}
+function teamNameFor(t){const lib=S.teamLib||[];const e=lib.find(x=>x.key===teamKey(t))||lib.find(x=>x.key===teamKeyLegacy(t));return e&&e.name?e.name:null;}
+function teamLbl(t){const n=teamNameFor(t);if(n)return esc(n);return t.map(i=>esc(((S.players[i]&&S.players[i].name)||'').split(' ')[0])).join(' & ');}
+function saveTeamName(t,name){set(()=>{
+  const key=teamKey(t),legacy=teamKeyLegacy(t);S.teamLib=S.teamLib||[];
+  name=(name||'').trim();
+  if(!name){S.teamLib=S.teamLib.filter(x=>x.key!==key&&x.key!==legacy);return;}
+  S.teamLib=S.teamLib.filter(x=>x.key!==legacy);   // upgrade legacy name-key entry to the pid key
+  const e=S.teamLib.find(x=>x.key===key);
+  if(e)e.name=name;else S.teamLib.push({id:'tm'+Date.now().toString(36),key,name});
+});}
+function saveTeamNameUI(g,k,v){saveTeamName(matchTeams(g)[k],v);}
+function teamNamesHTML(g){
+  const T=matchTeams(g);
+  if(T.some(t=>t.some(i=>!S.players[i]||!(S.players[i].name||'').trim())))return '';
+  const dl=`<datalist id="teamlibdl">${(S.teamLib||[]).map(x=>`<option value="${esc(x.name)}">`).join('')}</datalist>`;
+  return `<div class="tiny" style="font-weight:700;margin-top:8px">Team names <span style="font-weight:400">(optional — saved for next time)</span></div>${dl}
+  ${T.map((t,k)=>`<div class="row" style="border:none;padding:4px 0;display:flex;gap:8px;align-items:center">
+    <span class="tiny" style="flex:none;min-width:104px">${t.map(i=>esc(((S.players[i]&&S.players[i].name)||'').split(' ')[0])).join(' & ')}</span>
+    <input type="text" list="teamlibdl" placeholder="e.g. The Hammers" value="${esc(teamNameFor(t)||'')}" onchange="saveTeamNameUI('${g}',${k},this.value)" style="flex:1;min-width:0">
+  </div>`).join('')}`;
+}
 function matchTeams(g){
   const P=[[[0,1],[2,3]],[[0,2],[1,3]],[[0,3],[1,2]]];
   return P[teamPairing(g)||0];
@@ -4749,7 +4792,7 @@ function vStandings(){
     const bb=computeBestBall();
     const blocks=cols.map(L=>{
       const m=computeMatch(L);
-      const tn=t=>`${esc(S.players[m.T[t][0]].name)} &amp; ${esc(S.players[m.T[t][1]].name)}`;
+      const tn=t=>teamLbl(m.T[t]);
       let status;
       if(!m.thru)status='No holes confirmed yet';
       else if(m.clinch)status=`${tn(m.clinch.team)} win ${m.clinch.margin}${m.clinch.left?`&${m.clinch.left}`:' UP'}`;
@@ -4771,7 +4814,7 @@ function vStandings(){
     const T=sixesTeamsFor(S.round.cur);
     tables=genericCard('Sixes',computeSixes().ledgers,v=>String(v),false,
       `<div class="tiny mt">Best ball wins the hole, 1 pt each — ties go to both balls, then push.${hammerLive('sixes')?' <b>🔨 Hammer live</b> — totals include doubled and folded holes.':''}
-      Partners swap every ${seg} holes. Current: <b>${T[0].map(i=>esc((S.players[i].name||'').split(' ')[0])).join(' & ')}</b> v <b>${T[1].map(i=>esc((S.players[i].name||'').split(' ')[0])).join(' & ')}</b></div>`);
+      Partners swap every ${seg} holes. Current: <b>${teamLbl(T[0])}</b> v <b>${teamLbl(T[1])}</b></div>`);
   }else if(view==='umbrella'&&stackHas('umbrella')){
     const u=computeUmbrella();
     tables=genericCard('Umbrella',u.ledgers,v=>String(v),false,
@@ -4793,7 +4836,7 @@ function vStandings(){
   }else if(view==='nassau'){
     const na=computeNassau(),T=nassauSides();
     const fn=i=>esc((S.players[i].name||'').split(' ')[0]);
-    const tn=k=>T[k].map(fn).join(' & ');
+    const tn=k=>teamLbl(T[k]);
     const o=playOrder(),segLen=x=>x==='overall'?o.length:9;
     const betLines=cols.map(L=>`<div class="tiny mt"><b>${lbl(L)}:</b> ${na.bets[L].map(b=>{
       const fin=b.thru>=segLen(b.seg)-b.from;
