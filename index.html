@@ -258,7 +258,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784696490';
+const BUILD='1784765428';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -453,6 +453,7 @@ function load(){
       // installs predating a new builtin course never get it from the _v migration
       // below (it only refreshes matching ids) — append what's missing, every load
       builtinCourses().forEach(fc=>{if(!s.courses.some(c=>c.id===fc.id))s.courses.push(clone(fc));});
+      s.courses.forEach(normalizeNine);normalizeNine(s.course);
       // stored copies saved before builtins carried loc never got it (append only adds
       // MISSING ids) — without loc a course can't rank in the nearest-5 sort. Backfill.
       builtinCourses().forEach(fc=>{
@@ -945,6 +946,7 @@ async function doRestore(){
         (r.data.courses||[]).forEach(c=>{
           if(!c||!c.id||!c.holes)return;
           const i=S.courses.findIndex(x=>x.id===c.id);
+          normalizeNine(c);
           if(i>=0){if(S.courses[i].geo&&!c.geo)c.geo=S.courses[i].geo;S.courses[i]=c;}
           else{S.courses.push(c);cAdded++;}
         });
@@ -1050,6 +1052,18 @@ function lobbyClose(){
 // ---------- engine ----------
 function teeOf(p){return S.course.teeSets.find(t=>t.id===p.tee)||S.course.teeSets[0];}
 function parTotal(){return S.course.holes.reduce((a,h)=>a+h.par,0);}
+// 9-hole courses live in the app as a LOGICAL 18: the nine repeats (twice
+// around), SI 10-18 on the second loop, per-9 ratings doubled. loop9 marks the
+// course; physHole() maps a logical hole back to the real ground for GPS/geo.
+function normalizeNine(c){
+  if(!c||!c.holes||c.holes.length!==9)return c;
+  const maxSi=Math.max(...c.holes.map(h=>+h.si||0));
+  c.holes=c.holes.concat(c.holes.map(h=>({par:h.par,si:maxSi<=9?(+h.si||0)+9:(+h.si||0)})));
+  (c.teeSets||[]).forEach(t=>{if(t.rating&&t.rating<45){t.rating=Math.round(t.rating*2*10)/10;t.nine=true;}});
+  c.loop9=true;
+  return c;
+}
+function physHole(h){return (S.course&&S.course.loop9)?h%9:h;}
 function courseHandicaps(){
   const pt=parTotal();
   return S.players.map(p=>{
@@ -1969,7 +1983,10 @@ async function ensureCourseGeo(){
       if(r.ok){
         const js=await r.json();
         if(js&&js.holes&&Object.keys(js.holes).length){
-          set(()=>{S.course.geo={ts:Date.now(),holes:js.holes};});
+          // 9 physical holes under an 18-hole twice-around card (GHIN serves
+          // many true nines that way) — flag so physHole() maps 10-18 onto 1-9
+          set(()=>{S.course.geo={ts:Date.now(),holes:js.holes};
+            if(Object.keys(js.holes).length===9&&S.course.holes.length===18)S.course.loop9=true;});
           preloadCourseTiles(false);   // fire-and-forget: grab the tile pack while we have signal
           return;
         }
@@ -2132,7 +2149,7 @@ async function initHoleMap(){
     catch(e){geoErr=e.message;}
     if(S.screen!=='map')return;
   }
-  const geo=S.course.geo&&S.course.geo.holes?S.course.geo.holes[mapHole+1]:null;
+  const geo=S.course.geo&&S.course.geo.holes?S.course.geo.holes[physHole(mapHole)+1]:null;
   // Leaflet (with rotation) is the primary hole-map renderer — green-up orientation
   // needs true map rotation, which Google's raster satellite can't do. Google
   // remains the fallback if the Leaflet CDN is unreachable.
@@ -3365,6 +3382,7 @@ function applyGhinCourse(g){
     teeSets:g.course.teeSets.map((t,i)=>({id:'t'+Date.now()+i,name:t.name,rating:+t.rating||72,slope:+t.slope||113})),
     holes:g.course.holes,_noteOk:true,
     _note:`Loaded from USGA/GHIN: ${shownName}${g.city?` (${g.city}, ${String(g.state||'').replace('US-','')})`:''} — pars, stroke indexes, tee ratings and slopes all included.`};
+  normalizeNine(S.course);
   const t=S.course.teeSets[Math.min(1,S.course.teeSets.length-1)].id;
   S.players.forEach(p=>p.tee=t);
   finder={status:'idle',choices:[],error:''};
