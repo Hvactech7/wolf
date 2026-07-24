@@ -258,7 +258,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784870900';
+const BUILD='1784933805';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -622,6 +622,18 @@ function applyOp(k,v,defer){
         if(v.span)S.round.span=v.span;
         if(v.startedAt)S.round.startedAt=v.startedAt;
         S.shareMetaTs=v._ts;
+        // THE DOUG FIX: mid-round joins must WIDEN the game. Never trust a
+        // synced config's player count — derive it from the roster (grow-only
+        // mid-round). A solo round + invite-join left stroke.n=1: both phones
+        // rendered one row each and LWW ping-ponged whose it was (PV 7/24).
+        if(v.started){
+          const realN=Math.min(4,Math.max(1,(v.players||[]).filter(isRealPl).length));
+          [['stroke',1],['stbl',1],['quota',1],['bbb',2],['skins',2]].forEach(([g,mn])=>{
+            if(S.config[g]&&(S.config[g].n||0)<Math.max(mn,Math.min(4,realN)))S.config[g].n=Math.max(mn,Math.min(4,realN));
+          });
+          if(S.config.nassau&&realN>=4)S.config.nassau.n=4;
+          if(S.config.nines&&realN>=3&&(S.config.nines.n||0)<realN)S.config.nines.n=Math.min(4,realN);
+        }
         if(v.started){libSaveRoster();saveGroupFromRoster();}  // joiners remember the players AND the named group
         localContent[k]=sentCache[k]=contentKey(k);
       }
@@ -1736,6 +1748,10 @@ function updateTrackBtn(){
   const b=document.getElementById('trackbtn');if(!b)return;
   const armed=trackShot&&trackShot.hole===mapHole;
   b.textContent=armed?'Mark Ball':'Track Shot';
+  let x=document.getElementById('trackxbtn');
+  if(armed&&!x){
+    b.insertAdjacentHTML('afterend','<button id="trackxbtn" onclick="clearTrackStart()" style="position:fixed;left:max(138px,calc(50vw - 102px));bottom:calc(112px + env(safe-area-inset-bottom));z-index:6;width:46px;height:46px;background:var(--card);border:2px solid var(--red,#c0392b);border-radius:12px;color:var(--red,#c0392b);font-size:22px;font-weight:800;box-shadow:2px 2px 0 rgba(0,0,0,.35)">✕</button>');
+  }else if(!armed&&x)x.remove();
   b.style.borderColor=armed?'var(--amber-bd)':'var(--green)';
   b.style.color=armed?'var(--amber-bd)':'var(--green-mid)';
 }
@@ -1755,7 +1771,7 @@ function openClubSheet(yds){
   d.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:calc(172px + env(safe-area-inset-bottom));z-index:80;width:min(440px,94vw);background:var(--card);border:2px solid var(--green);border-radius:14px;padding:12px;box-shadow:4px 4px 0 rgba(0,0,0,.4)';
   d.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <b class="num" style="font-size:24px">${yds}y</b><span class="tiny">what club was that?</span>
-      <button class="ghost danger" onclick="discardShot()">✕</button></div>
+      <button class="ghost danger" onclick="cancelMark()">✕</button></div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">${CLUBS.map(c=>`<button class="ghost" style="padding:10px 0" onclick="saveShot('${c}')">${c}</button>`).join('')}</div>
     <button class="ghost mt" style="width:100%" onclick="saveShot(null)">Skip — just log the distance</button>`;
   document.body.appendChild(d);
@@ -1772,11 +1788,20 @@ function saveShot(club){
   if(trackPin){try{LMAP.removeLayer(trackPin);}catch(e){}trackPin=null;}
   closeClubSheet();updateTrackBtn();
 }
-function discardShot(){
+// X on the club sheet: cancel just the endpoint/mark — the start point stays
+// armed, so the next Mark press re-opens the club sheet. (Nathan's field ask.)
+function cancelMark(){
+  pendingShot=null;
+  closeClubSheet();updateTrackBtn();
+}
+// red ✕ next to Mark: abandon the whole shot (clears the start point)
+function clearTrackStart(){
   pendingShot=null;trackShot=null;
   if(trackPin){try{LMAP.removeLayer(trackPin);}catch(e){}trackPin=null;}
   closeClubSheet();updateTrackBtn();
 }
+// red ✕ beside the Mark button (renders only while a start point is armed)
+// is the escape hatch — clearTrackStart() below.
 // my score on the hole the map is showing — but only once it's actually been
 // entered: my own confirm stamp or the hole fully closed (gross is prefilled
 // with par, so a bare value doesn't count)
@@ -1881,6 +1906,7 @@ function vMap(){
   <div id="holemap"></div>
   ${mapStatChipsHTML(hole)}
   <button id="trackbtn" onclick="trackShotTap()" style="position:fixed;left:max(10px,calc(50vw - 230px));bottom:calc(112px + env(safe-area-inset-bottom));z-index:6;width:120px;height:46px;background:var(--card);border:2px solid ${trackShot&&trackShot.hole===mapHole?'var(--amber-bd)':'var(--green)'};border-radius:12px;color:${trackShot&&trackShot.hole===mapHole?'var(--amber-bd)':'var(--green-mid)'};font-family:Rajdhani,Inter,sans-serif;font-weight:700;font-size:19px;letter-spacing:.5px;box-shadow:2px 2px 0 rgba(0,0,0,.35)">${trackShot&&trackShot.hole===mapHole?'Mark Ball':'Track Shot'}</button>
+  ${trackShot&&trackShot.hole===mapHole?`<button id="trackxbtn" onclick="clearTrackStart()" style="position:fixed;left:max(138px,calc(50vw - 102px));bottom:calc(112px + env(safe-area-inset-bottom));z-index:6;width:46px;height:46px;background:var(--card);border:2px solid var(--red,#c0392b);border-radius:12px;color:var(--red,#c0392b);font-size:22px;font-weight:800;box-shadow:2px 2px 0 rgba(0,0,0,.35)">✕</button>`:''}
   <button onclick="go('hole')" style="position:fixed;right:max(10px,calc(50vw - 230px));top:calc(100px + env(safe-area-inset-top));z-index:6;background:rgba(15,21,34,.82);border:1.5px solid var(--line);border-radius:10px;color:#fff;padding:8px 14px;font-size:14px;font-weight:600;font-family:inherit">Back</button>
   <button id="mapconfirm" onclick="mapConfirm()" style="display:none;position:fixed;right:max(10px,calc(50vw - 230px));bottom:calc(166px + env(safe-area-inset-bottom));z-index:6;width:126px;height:46px;background:var(--elec,#2b86ec);background:#2b86ec;border:2px solid var(--elec-dk,#1c5eb0);border-radius:12px;color:#eef6ff;font-family:Rajdhani,Inter,sans-serif;font-weight:700;font-size:19px;box-shadow:2px 2px 0 rgba(0,0,0,.35)">✓ Confirm</button>
   <div style="position:fixed;right:max(10px,calc(50vw - 230px));bottom:calc(112px + env(safe-area-inset-bottom));z-index:6;display:flex;align-items:center;background:var(--card);border:2px solid var(--green);border-radius:12px;overflow:hidden;box-shadow:2px 2px 0 rgba(0,0,0,.35)">
@@ -2638,6 +2664,13 @@ function render(){
   if(S.screen!=='gate'&&gatePick.timer){clearInterval(gatePick.timer);gatePick.timer=null;gatePick.open=false;}
   const el=$('#app');
   const scr=S.screen;
+  // iOS Shake-to-Undo mitigation: on the play screens (no text inputs) drop any
+  // lingering first-responder field so a cart-path bump has no 'Undo Typing' to
+  // offer. The full disable is Settings>Accessibility>Touch>Shake to Undo>Off.
+  if(scr==='hole'||scr==='map'||scr==='standings'){
+    const a=document.activeElement;
+    if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))try{a.blur();}catch(e){}
+  }
   let html='';
   if(scr==='home') html=vHome();
   else if(scr==='courses') html=vCourses();
