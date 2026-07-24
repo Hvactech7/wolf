@@ -258,7 +258,7 @@
 <script>
 'use strict';
 const LS_KEY='wolfGolfV1';
-const BUILD='1784868304';
+const BUILD='1784869950';
 const HOLES=18;
 
 // Built-in courses — data from USGA/GHIN, current ratings and stroke allocations.
@@ -2048,6 +2048,34 @@ function loadGoogleMaps(){
   return googleP;
 }
 function mapTapAt(t){
+  if(mapMarks._ringMode&&!mapMarks.greenC){
+    // ring mode: this tap IS the green. Live target + crowdsourced capture.
+    mapMarks.greenC=t.slice();
+    const mk=L.marker(t,{draggable:true,icon:L.divIcon({className:'',
+      html:'<div style="width:15px;height:15px;border-radius:50%;background:#ffd75e;border:2.5px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.65)"></div>',
+      iconSize:[15,15],iconAnchor:[8,8]})}).addTo(LMAP);
+    mk.bindTooltip('green (you set it)',{permanent:true,direction:'top',offset:[0,-10],className:'maplbl'});
+    mapMarks._ringGreen=mk;
+    const report=()=>{const p=mk.getLatLng();
+      stat('greenmark',{course:S.course.id,courseName:S.course.name,hole:physHole(mapHole)+1,
+        lat:+p.lat.toFixed(6),lon:+p.lng.toFixed(6),cardY:mapMarks._cardY||null,
+        fromDist:mapMarks.mePos?Math.round(mDist(mapMarks.mePos,[p.lat,p.lng])*1.09361):null});};
+    report();
+    let jd=false;
+    mk.on('drag',()=>{const p=mk.getLatLng();mapMarks.greenC=[p.lat,p.lng];
+      if(mapMarks.refreshTapLine)mapMarks.refreshTapLine();
+      updateFMB(mapMarks.mePos||mapMarks.ref,'');});
+    mk.on('dragend',()=>{jd=true;setTimeout(()=>{jd=false;},300);report();});
+    mk.on('click',()=>{if(jd)return;
+      // re-tap clears — back to searching the ring
+      try{LMAP.removeLayer(mk);}catch(e){}
+      mapMarks._ringGreen=null;mapMarks.greenC=null;
+      if(mapMarks.refreshTapLine)mapMarks.refreshTapLine();
+      const el=document.getElementById('fmb');if(el)el.textContent='—';});
+    if(mapMarks.refreshTapLine)mapMarks.refreshTapLine();
+    updateFMB(mapMarks.mePos||mapMarks.ref,'');
+    return;
+  }
   // the yardage pills on the map carry the leg distances — nothing else to show
   if(mapMarks.setTap)mapMarks.setTap(t);
 }
@@ -2239,8 +2267,12 @@ async function initHoleMap(){
   let geoErr='';
   if(!S.course.geo){
     const s2=sub();if(s2)s2.textContent='Downloading course map…';
-    try{await ensureCourseGeo();return;}
-    catch(e){geoErr=e.message;}
+    try{
+      await ensureCourseGeo();
+      // success re-renders via set(); abort this init to avoid a double map.
+      // NO data (card-only course) → fall through and build the ring view.
+      if(S.course.geo)return;
+    }catch(e){geoErr=e.message;}
     if(S.screen!=='map')return;
   }
   const geo=S.course.geo&&S.course.geo.holes?S.course.geo.holes[physHole(mapHole)+1]:null;
@@ -2338,10 +2370,24 @@ async function initHoleMap(){
     updateFMB(geo.path[0],'yards from the tee');
   }else{
     const c=myCoords||[38.6972,-121.6173];
-    if(canRotate){try{LMAP.setBearing(0);}catch(e){}}
+    if(canRotate){try{LMAP.setBearing(0);LMAP.touchRotate&&LMAP.touchRotate.enable();}catch(e){}}
     LMAP.setView(c,16);
-    mapMarks={greenC:null,greenPoly:null,ref:c,mePos:null};
-    const s2=sub();if(s2)s2.textContent=geoErr||'Hole lines not mapped here — rangefinder still works.';
+    mapMarks={greenC:null,greenPoly:null,ref:c,mePos:null,aimC:null};
+    // CARD RING: unmapped hole + known card yardage = the green MUST sit on a
+    // ring of that radius around the tee. Eye walks the ring; tap the green
+    // when you spot it — becomes the live target AND a crowdsourced capture.
+    const myTee=(S.players[myPlayerIdx()]||{}).tee;
+    const ts=(S.course.teeSets||[]);
+    const tset=ts.find(t=>t.id===myTee&&t.yds)||ts.find(t=>t.yds);
+    const cardY=tset&&tset.yds&&tset.yds[physHole(mapHole)];
+    if(cardY){
+      mapMarks._ring=L.circle(c,{radius:cardY*0.9144,color:'#ffd75e',weight:2.5,opacity:.85,fill:false,dashArray:'10 8'}).addTo(LMAP);
+      try{LMAP.fitBounds(mapMarks._ring.getBounds().pad(0.12));}catch(e){}
+      mapMarks._ringMode=true;mapMarks._cardY=cardY;
+      const s2=sub();if(s2)s2.textContent=`no map here — card says ${cardY}y (${esc(tset.name)}). The green sits ON the gold ring: two-finger rotate to look, tap it when you spot it.`;
+    }else{
+      const s2=sub();if(s2)s2.textContent=geoErr||'Hole lines not mapped here — rangefinder still works.';
+    }
   }
   let lMe=null,lTaps=[],lTapLine=null,lTapCase=null;
   const tapLL=m=>{const p=m.getLatLng();return [p.lat,p.lng];};
@@ -2377,6 +2423,7 @@ async function initHoleMap(){
     else{lTaps.forEach(x=>LMAP.removeLayer(x));lTaps=[];}
     refreshTapLine();
   };
+  mapMarks.refreshTapLine=refreshTapLine;
   mapMarks.setMe=pos=>{if(!LMAP)return;
     if(!pos){if(lMe){LMAP.removeLayer(lMe);lMe=null;}refreshTapLine();return;}
     if(!lMe)lMe=L.circleMarker(pos,{radius:8,color:'#fff',weight:2.5,fillColor:'#2b86ec',fillOpacity:1}).addTo(LMAP);else lMe.setLatLng(pos);
@@ -3223,7 +3270,7 @@ async function natUse(id){
     if(!r.ok)throw new Error('record '+r.status);
     const rec=await r.json();
     const course={id:rec.id,name:rec.name,loc:rec.loc,
-      teeSets:(rec.teeSets||[]).filter(t=>t.rating&&t.slope).map(t=>({id:t.id,name:t.name,rating:t.rating,slope:t.slope})),
+      teeSets:(rec.teeSets||[]).filter(t=>t.rating&&t.slope).map(t=>({id:t.id,name:t.name,rating:t.rating,slope:t.slope,yds:t.yds||null})),
       holes:rec.holes,geoUrl:rec.geoUrl||null,tier:rec.tier};
     if(!course.teeSets.length)course.teeSets=[{id:'na-def',name:'White',rating:70,slope:120}];
     normalizeNine(course);
